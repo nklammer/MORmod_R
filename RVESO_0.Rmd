@@ -5,28 +5,68 @@ date: "3/15/2021"
 output: html_document
 ---
 
-This is a test change for version control.
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+# Import
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+```{r import, message=FALSE, warning=FALSE}
+library(readr)
+eplusout <- read_csv("eplusout.csv")
+# View(eplusout)
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
+```{r}
+# readr::spec(eplusout)
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+freq <- "null"
+rows <- nrow(eplusout) 
+if (rows==8760*4) {
+  freq <- "15 minutes"
+} else if (rows==8760) {
+  freq <- "hourly"
+} else if (rows==12) {
+  freq <- "monthly"
+} else {freq <- "could not determine"}
+paste("The frequency of this timeseries is ", freq,".", sep = "")
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+list <- grep('Sensible', value = TRUE,
+  grep('Zone Ideal Loads', names(eplusout), value = TRUE) 
+  )
+list
+```
+
+
+
+### TODO later
+```{r}
+
+# grep('Sensible', value = TRUE,
+#   grep('Zone Ideal Loads', names(eplusout), value = TRUE) 
+#   )
+
+list <- grep('Sensible', value = TRUE,
+  grep('Zone Ideal Loads', names(eplusout), value = TRUE) 
+  )
+
+obj <- regexpr(pattern = '[0-9]+', list)
+
+mlen <- attr(obj, "match.length")
+# obj[1:length(obj)]
+
+
+# intialize matrix
+index <- 0
+for (i in 1:length(obj)) {
+  index[i] <- substr(list[i], start = obj[i], stop = obj[i]+mlen[i]-1)
+}
+index <- as.numeric(index)
+sort(index)
+```
+
+
+<br><br><br>
