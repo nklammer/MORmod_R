@@ -59,13 +59,12 @@ mlen <- attr(obj, "match.length")
 # obj[1:length(obj)]
 
 
-# intialize matrix
-index <- 0
+# intialize array
+index_df <- 0
 for (i in 1:length(obj)) {
-  index[i] <- substr(list[i], start = obj[i], stop = obj[i]+mlen[i]-1)
+  index_df[i] <- substr(list[i], start = obj[i], stop = obj[i]+mlen[i]-1)
 }
-index <- as.numeric(index)
-sort(index)
+df <- rbind(as.numeric(index_df),list)
 ```
 
 
