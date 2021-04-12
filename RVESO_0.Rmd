@@ -18,7 +18,7 @@ eplusout <- read_csv("eplusout.csv")
 ```
 
 
-```{r}
+```{r include=FALSE}
 # readr::spec(eplusout)
 
 freq <- "null"
@@ -30,34 +30,27 @@ if (rows==8760*4) {
 } else if (rows==12) {
   freq <- "monthly"
 } else {freq <- "could not determine"}
-paste("The frequency of this timeseries is ", freq,".", sep = "")
-```
 
+```
+There are ``r ncol(eplusout)`` column variables in this file with names like ``r names(eplusout)[3]``, ``r names(eplusout)[50]``, and ``r names(eplusout)[100]``.
+
+The frequency of this .eso file's timestep is ``r freq``.
+
+
+### Get all var names that match "Sensible" && "Zone Ideal Loads"
 ```{r}
 list <- grep('Sensible', value = TRUE,
   grep('Zone Ideal Loads', names(eplusout), value = TRUE) 
   )
-list
+# list
 ```
 
+*Done*
 
 
-### TODO later
+### TODO - sort and fix "10" < "2"
 ```{r}
-
-# grep('Sensible', value = TRUE,
-#   grep('Zone Ideal Loads', names(eplusout), value = TRUE) 
-#   )
-
-list <- grep('Sensible', value = TRUE,
-  grep('Zone Ideal Loads', names(eplusout), value = TRUE) 
-  )
-
-obj <- regexpr(pattern = '[0-9]+', list)
-
-mlen <- attr(obj, "match.length")
-# obj[1:length(obj)]
-
+stringr::str_sort(list, numeric = TRUE)
 
 # intialize array
 index_df <- 0
