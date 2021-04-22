@@ -1,0 +1,63 @@
+---
+title: "Cluster and Analyze"
+author: "Noah Klammer"
+date: "4/22/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## Clear global and report
+
+```{r}
+rm(list = ls())
+gc()
+```
+
+# Import EPW
+
+```{r include=FALSE}
+library(eplusr)
+epw <- eplusr::Epw$new("USA_CA_Los.Angeles.Intl.AP.722950_TMY3.epw")
+
+# good info
+epw$typical_extreme_period()
+paste0("The number of time intervals per hour is ",epw$interval())
+paste(colnames(epw$data()), collapse = ", ")
+epw$data() %>%
+  select(month, day, hour, dry_bulb_temperature)
+```
+
+# Import Rda
+
+```{r import, message=FALSE, warning=FALSE}
+load(file = "ILAS.Rda")
+```
+
+### select four days to cluster in 24-d vector
+
+`USA_CA_Los.Angeles.Intl.AP.722950_TMY3.ddy`
+
+January 21, April 21, August 21, October 21
+
+```{r}
+days_of_interest <- c("01/21","04/21","08/21","10/21")
+
+sel4days <- ILAS %>%
+  filter(Date %in% days_of_interest)
+
+```
+*Done*
+
+
+### TODO - get DB temps for the same four days
+```{r}
+epw$data() %>%
+  select(month, day, hour, dry_bulb_temperature)
+```
+
+
+<br><br><br>

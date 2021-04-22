@@ -10,6 +10,14 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 ```
 
+## Clear global and report
+
+```{r}
+rm(list = ls())
+gc()
+```
+
+
 # Import
 
 ```{r import, message=FALSE, warning=FALSE}
@@ -103,16 +111,44 @@ ILAS <- ILAS[sorted_list]
 `Date/Time` <- eplusout$`Date/Time`
 ILAS <- cbind(`Date/Time`,ILAS)
 
+#as.integer(
+  substr(ILAS$`Date/Time`[2],2,15)
+ # )
+
+# separate the date and time into month, day, hour, minute
+ILAS <- ILAS %>%
+  mutate(month = as.integer(substr(`Date/Time`, start = 0, stop = 2)),
+         day = as.integer(substr(`Date/Time`, start = 4, stop = 5)),
+         hour = as.integer(substr(`Date/Time`, start = 8, stop = 9)),
+         `Date/Time` = as.integer(substr(`Date/Time`, start = 11, stop = 12))) %>%
+  rename(minute = `Date/Time`)
+
+sorted_list <- stringr::str_sort(colnames(ILAS), numeric = TRUE)
+
+ILAS <- ILAS[sorted_list]
+
 # remove NA observations
 ILAS <- ILAS %>% na.omit()
-
+# remove the automatic column numbers
+rownames(ILAS) <- NULL
 ```
 *Done* The variables of interest have been selected and observations of NA have been removed. The dataframe now has ``r ncol(ILAS)`` columns and ``r nrow(ILAS)`` rows.
 
-### TODO - edit and save template reporting measure to extract exactly the variables I want
+### TODO - pick out 4 days per Zahra's recommendation
+
+### TODO - review clustering
+
+### TODO - save as .Rda file
+
+```{r}
+save(ILAS,file = "ILAS.Rda")
+```
+
+
+### TODO - edit and save template OS reporting measure to extract exactly the variables I want
 
 1) Date/Time
-2) Zone HVAC Ideal Loads Air System XX: Zone Ideal Loads Zone Sensible XXXXXXX Energy \[J](Hourly)
+2) Zone HVAC Ideal Loads Air System XX: Zone Ideal Loads Zone Sensible XXXXXXX Energy [J]\(Hourly)
 3) Zone Area (see OpenStudio Results section Zone Summary)
 4) Zone's surfaces' boundary condition (Number of exposed surfaces) (see Envelope and Internal Load Breakdown Report section Surface Average Face Conduction Heat Gain/Loss)
 5) Total Site EUI (OpenStudio Results)
