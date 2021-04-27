@@ -36,12 +36,12 @@ circ_1 = as.data.frame(matrix(nrow=ndays,ncol=nmodes))
 daynames = vector(length=ndays)
 modnames = c("M1","M2","M3","M4","M5","M6","M7","M8")
 
+names(circ_1)=modnames
 for(i in 1:ndays){
 	circ_1[i,] = circ_1_vector[idx+(i-1)*24]
 	daynames[i] = paste("Day ",i, sep="")
 }
 
-names(circ_1)=modnames
 row.names(circ_1)=daynames
 ```
 

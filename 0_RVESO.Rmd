@@ -81,16 +81,28 @@ ILAS <- eplusout[sorted_list]
 
 ### replace Air System Number with Zone name
 
+`stringr::str_view_all` html snippet very helpful. As is stringr cheatsheet pdf.
+
 ```{r}
 library(stringr)
+# looks at colnames for any digit sets and replaces with zone list mapping
 colnames(ILAS) =
 stringr::str_replace(colnames(ILAS), 
                      "[0-9]+", 
                      rep(ILAS_map$`Zone List`, each = 2))
+
+# want to lessen characters in colnames
+colnames(ILAS) =
+stringr::str_replace(colnames(ILAS), 
+                     "\\:\\D{31}",
+                     ": ")
+
 ```
 *Done*
 
 ### Inspect Zones and select only residential zones of interest
+
+Residential zones are considered dwelling units, stairwells (don't know if they're connected vertically), and corridors above the first floor.
 
 ```{r}
 res_list <- 
@@ -126,6 +138,8 @@ ILAS <- ILAS %>%
 sorted_list <- stringr::str_sort(colnames(ILAS), numeric = TRUE)
 
 ILAS <- ILAS[sorted_list]
+# numeric month var to month string
+# ILAS <- transform(ILAS, month = month.abb[month])
 
 # remove NA observations
 ILAS <- ILAS %>% na.omit()
@@ -133,10 +147,6 @@ ILAS <- ILAS %>% na.omit()
 rownames(ILAS) <- NULL
 ```
 *Done* The variables of interest have been selected and observations of NA have been removed. The dataframe now has ``r ncol(ILAS)`` columns and ``r nrow(ILAS)`` rows.
-
-### TODO - pick out 4 days per Zahra's recommendation
-
-### TODO - review clustering
 
 ### TODO - save as .Rda file
 
