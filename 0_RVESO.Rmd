@@ -20,27 +20,15 @@ gc()
 
 # Import
 
+## ESO timeseries
+
 ```{r import, message=FALSE, warning=FALSE}
 eplusout <- readr::read_csv("eplusout.csv")
-# View(eplusout)
 ```
-
-```{r message=FALSE, warning=FALSE}
-library(readr)
-IdLoAiSy_Map <- read_csv("IdLoAiSy-Map.csv")
-unc_zones <- IdLoAiSy_Map$`Zone List`[is.na(IdLoAiSy_Map$`Ideal Air Loads System Number`)]
-
-ILAS_map <- IdLoAiSy_Map %>%
-  na.omit() %>%
-  arrange(`Ideal Air Loads System Number`)
-
-```
-Unconditioned zones in this model are ``r unc_zones``
 
 
 ```{r include=FALSE}
 # readr::spec(eplusout)
-
 freq <- "null"
 rows <- nrow(eplusout) 
 if (rows==8760*4) {
@@ -50,55 +38,107 @@ if (rows==8760*4) {
 } else if (rows==12) {
   freq <- "monthly"
 } else {freq <- "could not determine"}
-
 ```
 There are ``r ncol(eplusout)`` column variables in this file with names like ``r names(eplusout)[3]``, ``r names(eplusout)[50]``, and ``r names(eplusout)[100]``.
 
 The frequency of this .eso file's timestep is ``r freq``.
 
+## Ideal Air Loads to Zone mapping
+
+```{r message=FALSE, warning=FALSE}
+library(readr)
+IdLoAiSy_Map <- read_csv("IdLoAiSy-Map.csv")
+# char list of unconditioned spaces
+unc_zones <- IdLoAiSy_Map$`Zone List`[is.na(IdLoAiSy_Map$`Ideal Air Loads System Number`)]
+# drop unconditioned spaces
+ILAS_map <- IdLoAiSy_Map %>%
+  na.omit() %>%
+  arrange(`Ideal Air Loads System Number`)
+# note that some conditioned spaces don't have heat/cool loads
+# in this model
+```
+Unconditioned zones in this model are ``r unc_zones``
+
+## Area to Zone mapping
+
+```{r message=FALSE, warning=FALSE}
+Area_Map <- read_csv("ZoneFloorArea-Map.csv")
+```
+
 
 ### Get all var names that match "Sensible" && "Zone Ideal Loads"
 ```{r}
-ILAS_col <- grep('Sensible', value = TRUE,
-  grep('Zone Ideal Loads', names(eplusout), value = TRUE) 
-  )
+# stringr::str_view_all(names(eplusout),"Zone\\sIdeal\\sLoads+.+Sensible")
+ILAS_col <- grep("Zone\\sIdeal\\sLoads+.+Sensible", 
+                 names(eplusout), value = TRUE) 
 ```
 
 *Done* There are ``r length(ILAS_col)`` column variables in this subset.
 
-
-
-### sort
+### Sort
 ```{r}
-
-# sort and fix "10" < "2"
+# sort and fix "10" < "2" with stringr
 sorted_list <- stringr::str_sort(ILAS_col, numeric = TRUE)
-
 ILAS <- eplusout[sorted_list]
 
 ```
 
 
-### replace Air System Number with Zone name
+### Replace Air System Number with Zone name
 
 `stringr::str_view_all` html snippet very helpful. As is stringr cheatsheet pdf.
 
 ```{r}
 library(stringr)
 # looks at colnames for any digit sets and replaces with zone list mapping
-colnames(ILAS) =
-stringr::str_replace(colnames(ILAS), 
-                     "[0-9]+", 
-                     rep(ILAS_map$`Zone List`, each = 2))
 
-# want to lessen characters in colnames
+# have to write which() indexing function
+# and sapply over num vector
+idx_n <- function(num) {
+  which(num==ILAS_map$`Ideal Air Loads System Number`)
+  }
+
+s2nlist <- as.numeric(str_extract(colnames(ILAS),"[0-9]+"))
+idx <- sapply(s2nlist,idx_n)
+
+# str_replace() analogous to sub()
+colnames(ILAS) =
+stringr::str_replace(string = colnames(ILAS), 
+                     pattern = "[0-9]+", 
+                     replacement = ILAS_map$`Zone List`[idx])
+
+# may have to do colname sort and re-index
+
+# lessen characters in colnames
+# ~Zone Ideal Loads Zone Sensible\\s~
 colnames(ILAS) =
 stringr::str_replace(colnames(ILAS), 
                      "\\:\\D{31}",
                      ": ")
-
 ```
-*Done*
+
+### Normalize Loads by Floor Area
+
+```{r}
+# check here if var names ever change
+# colnames(ILAS)
+
+idx_s <- function(str) {
+  which(str==Area_Map$`Zone List`)
+  }
+
+slist <- str_extract(colnames(ILAS),"(?<=SYSTEM\\s).+(?=\\:)")
+idx2 <- sapply(slist,idx_s)
+vec <- Area_Map$`Space Area [m2]`[idx2]
+
+# apply normalization vector across matrix
+ILAS <- sweep(ILAS, 2, vec, FUN = "/")
+
+# change colnames to reflect metric
+# **[J]** => [J/m^2]
+colnames(ILAS) <- str_replace(colnames(ILAS),"(?<=\\[)J{1}","J/m^2")
+```
+
 
 ### Inspect Zones and select only residential zones of interest
 
@@ -123,11 +163,12 @@ ILAS <- ILAS[sorted_list]
 `Date/Time` <- eplusout$`Date/Time`
 ILAS <- cbind(`Date/Time`,ILAS)
 
-#as.integer(
-  substr(ILAS$`Date/Time`[2],2,15)
- # )
+# make `Date/Time` string rownames
+# this comes in handy for dataframe transpose
+# drop hh:mm~:ss~
+rownames(ILAS) <- str_replace(eplusout$`Date/Time`,".{3}$","")
 
-# separate the date and time into month, day, hour, minute
+# separate the date and time into cols month, day, hour, minute
 ILAS <- ILAS %>%
   mutate(month = as.integer(substr(`Date/Time`, start = 0, stop = 2)),
          day = as.integer(substr(`Date/Time`, start = 4, stop = 5)),
@@ -143,8 +184,8 @@ ILAS <- ILAS[sorted_list]
 
 # remove NA observations
 ILAS <- ILAS %>% na.omit()
-# remove the automatic column numbers
-rownames(ILAS) <- NULL
+# remove the automatic row numbers
+# rownames(ILAS) <- NULL
 ```
 *Done* The variables of interest have been selected and observations of NA have been removed. The dataframe now has ``r ncol(ILAS)`` columns and ``r nrow(ILAS)`` rows.
 
