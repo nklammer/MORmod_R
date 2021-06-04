@@ -19,7 +19,7 @@ gc()
 
 # Intro
 
-In this instance, I am using Zone Ideal Air Loads extracted from a `in.idf` with the weather file `USA_CA_Los.Angeles.Intl.AP.722950_TMY3.ddy`. The Zone Ideal Load Air System ("ILAS") numerical `colnames` were `str_replace`d to match the `Name` field of the `Zone` object in the precedent file `0_RVESO.Rmd`. Heating load was normalized by zone floor area. That file also exported a R data file object `ILAS.Rda`. In this file `1_CLUS.Rmd` we will import both Ideal Load Air System data and weather data via the connector package `eplusr`. We will visualize this data for exploration. We will create report figures. We will attempt clustering of the ideal air loads for a subset of 8760 observations. Note that the nth observation in the `hour` variable corresponds to the average of the period from (n-1)th hour to nth hour.
+In this instance, I am using Zone Ideal Air Loads extracted from an EnergyPlus `in.idf` with the weather file `USA_CA_Los.Angeles.Intl.AP.722950_TMY3.ddy`. The Zone Ideal Load Air System ("ILAS") numerical `colnames` were `str_replace`d to match the `Name` field of the `Zone` object in the predecessor file `0_RVESO.Rmd`. Loads were normalized by zone floor area. That file also exported a R data file object `ILAS.Rda`. In this file `1_CLUS.Rmd` we will import both Ideal Load Air System data and weather data via the connector package `eplusr`. We will visualize this data for exploration. We will create report figures. We will attempt clustering of the ideal air loads for a subset of 8760 observations. Note that the nth observation in the `hour` variable corresponds to the average of the period from (n-1)th hour to nth hour.
 
 ## Import EPW
 
@@ -186,7 +186,7 @@ intersect(c,h)
 
 The longer we work with this data set, the more clear it is that many zones have zero variance. We see that `r length(zero_var_zones)` out of `r length(sel_days_ILAS)` zones have zero variance for this temporal range.
 
-In `r month.name[months_of_interest]`, we find that there are `r length(c)` zones (3 for Jan + Apr) with no cooling load and `r length(h)` zones (54 for Jan + Apr) with no heating load. We assert that `r length(intersect(c,h))` have neither cooling nor heating load.
+In `r month.name[months_of_interest]`, we find that there are `r length(c)` zones with no cooling load and `r length(h)` zones with no heating load. We assert that `r length(intersect(c,h))` have neither cooling nor heating load.
 
 What's going on? No cooling/heating energy in `CORRIDOR_2`, `CORRIDOR_3`, or `CORRIDOR_4`. They must be unconditioned.
 
@@ -243,7 +243,7 @@ sub <- subset(ILAS, select = -c(day, hour, minute, month))
 
 ```
 
-To reduce the parameter space across which we cluster, we'll determine which hours of the year represent the building's thermal response curve. **Need to normalize to floor area**. The zone that has the highest area-normalized cooling load is ``r max_cool_zone`` (needs to be normalized). This peak cooling load occurs at hour `r max_cool_hour` on `r paste0(max_cool_month,"/",max_cool_day)`. The zone that has the highest area-normalized heating load is ``r max_heat_zone`` (needs to be normalized). This peak heating load occurs at hour `r max_heat_hour` on `r paste0(max_heat_month,"/",max_heat_day)`.
+To reduce the parameter space across which we cluster, we'll determine which hours of the year represent the building's thermal response curve. The zone that has the highest area-normalized cooling load is ``r max_cool_zone`` (needs to be normalized). This peak cooling load occurs at hour `r max_cool_hour` on `r paste0(max_cool_month,"/",max_cool_day)`. The zone that has the highest area-normalized heating load is ``r max_heat_zone`` (needs to be normalized). This peak heating load occurs at hour `r max_heat_hour` on `r paste0(max_heat_month,"/",max_heat_day)`.
 
 To start, we'll take the two aforementioned peak hours as rows as a subset of our annual data. We'll keep all the thermal zones.
 
@@ -260,7 +260,7 @@ max_heat_row <- which(max(max_heat)==ILAS[[max_heat_zone]])
 ILAS %>%
   select(month,day,hour,`ZONE HVAC IDEAL LOADS AIR SYSTEM 2_BDRM_3_4: Heating Energy [J/m^2](Hourly)`) %>%
   arrange(desc(`ZONE HVAC IDEAL LOADS AIR SYSTEM 2_BDRM_3_4: Heating Energy [J/m^2](Hourly)`)) %>%
-  slice(seq(1,8000))
+  slice(seq(1,10))
 
 # like 05:00 March 19 (wd), and 22:00 Sept 28 (we)
 # need high heating day during operation - 10:00 January 7 (wd)
@@ -327,6 +327,33 @@ dev.off()
 ![](3var_cluster.png)
 
 ### TODO - transform heating loads into negative cooling loads
+
+### TODO - get typical days
+
+```{r}
+
+view_me <- epw$typical_extreme_period()
+names <- epw$typical_extreme_period()$name
+
+epw_strings <- c(
+  "Summer - Week Nearest Average Temperature For Period",
+  "Winter - Week Nearest Average Temperature For Period",
+  "Autumn - Week Nearest Average Temperature For Period",
+  "Spring - Week Nearest Average Temperature For Period"
+)
+
+names[c(2,4:6)]
+start_days <- as.character( epw$typical_extreme_period()$start_day[c(2,4:6)] )
+end_days <- as.character( epw$typical_extreme_period()$end_day[c(2,4:6)] )
+
+# look ahead regexp for month chars
+str_extract(start_days,"\\d+(?=/)")
+
+# look behind regexp for day chars
+str_extract(start_days,"(?<=/)\\d+")
+
+```
+
 
 # End
 
