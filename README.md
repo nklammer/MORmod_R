@@ -1,4 +1,4 @@
-# SDDC_R
+# MORmod_R
 Version control of my thesis work in R
 
 # R integration
