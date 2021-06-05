@@ -86,11 +86,12 @@ ILAS <- eplusout[sorted_list]
 
 ### Replace Air System Number with Zone name
 
-`stringr::str_view_all` html snippet very helpful. As is stringr cheatsheet pdf.
+`stringr::str_view_all` html snippet very helpful. As is stringr cheatsheet "strings.pdf".
 
 ```{r}
 library(stringr)
-# looks at colnames for any digit sets and replaces with zone list mapping
+# looks for any digit sets in colnames and
+# replaces with zone string name mapping
 
 # have to write which() indexing function
 # and sapply over num vector
@@ -139,7 +140,6 @@ ILAS <- sweep(ILAS, 2, vec, FUN = "/")
 colnames(ILAS) <- str_replace(colnames(ILAS),"(?<=\\[)J{1}","J/m^2")
 ```
 
-
 ### Inspect Zones and select only residential zones of interest
 
 Residential zones are considered dwelling units, stairwells (don't know if they're connected vertically), and corridors above the first floor.
@@ -157,8 +157,31 @@ sorted_list <- stringr::str_sort(res_list, numeric = TRUE)
 ILAS <- ILAS[sorted_list]
 ```
 
+### Combine heating and cooling loads
 
-### add Date/Time back in
+```{r}
+slist_unique <- unique(str_extract(colnames(ILAS),"(?<=SYSTEM\\s).+(?=\\:)"))
+
+# negate all variables that regexp match "Heating"
+index <- str_which(colnames(ILAS),"Heating")
+ILAS[,index] <- -ILAS[,index]
+
+# this computation takes the two cols that
+# share a zone name and adds them together
+for (i in slist_unique) {
+  index <- str_which(colnames(ILAS),i)
+  ILAS[,index[1]] <- ILAS[,index[1]] + ILAS[,index[2]]
+}
+
+# reset df to have only cooling cols
+# after above computation
+ILAS <- ILAS %>%
+  select(contains("Cooling"))
+
+```
+
+
+### Add Date/Time back in
 ```{r}
 `Date/Time` <- eplusout$`Date/Time`
 ILAS <- cbind(`Date/Time`,ILAS)
@@ -189,7 +212,7 @@ ILAS <- ILAS %>% na.omit()
 ```
 *Done* The variables of interest have been selected and observations of NA have been removed. The dataframe now has ``r ncol(ILAS)`` columns and ``r nrow(ILAS)`` rows.
 
-### TODO - save as .Rda file
+### Save as .Rda R data file
 
 ```{r}
 save(ILAS,file = "ILAS.Rda")
@@ -199,7 +222,7 @@ save(ILAS,file = "ILAS.Rda")
 ### TODO - edit and save template OS reporting measure to extract exactly the variables I want
 
 1) Date/Time
-2) Zone HVAC Ideal Loads Air System XX: Zone Ideal Loads Zone Sensible XXXXXXX Energy [J]\(Hourly)
+2) Zone HVAC Ideal Loads Air System XX: Zone Ideal Loads Zone Sensible XXXXXXX Energy [J]\\(Hourly)
 3) Zone Area (see OpenStudio Results section Zone Summary)
 4) Zone's surfaces' boundary condition (Number of exposed surfaces) (see Envelope and Internal Load Breakdown Report section Surface Average Face Conduction Heat Gain/Loss)
 5) Total Site EUI (OpenStudio Results)
