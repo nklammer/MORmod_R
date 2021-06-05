@@ -19,6 +19,8 @@ gc()
 
 # Intro
 
+This is my second attempt at clustering of zones using the ideal air loads output variable.
+
 In this instance, I am using Zone Ideal Air Loads extracted from an EnergyPlus `in.idf` with the weather file `USA_CA_Los.Angeles.Intl.AP.722950_TMY3.ddy`. The Zone Ideal Load Air System ("ILAS") numerical `colnames` were `str_replace`d to match the `Name` field of the `Zone` object in the predecessor file `0_RVESO.Rmd`. Loads were normalized by zone floor area. That file also exported a R data file object `ILAS.Rda`. In this file `1_CLUS.Rmd` we will import both Ideal Load Air System data and weather data via the connector package `eplusr`. We will visualize this data for exploration. We will create report figures. We will attempt clustering of the ideal air loads for a subset of 8760 observations. Note that the nth observation in the `hour` variable corresponds to the average of the period from (n-1)th hour to nth hour.
 
 ## Import EPW
@@ -45,7 +47,7 @@ load(file = "ILAS.Rda")
 
 ### Select N hours to cluster in N-space
 
-Previously based on the advice of Zahra Fallahi, I chose four select days on which to base my first trial of clustering. Based on the results from the first trial, I saw that even good intentions were not successful in preventing biasing the clustering. For this second trial, I will try to be more cognizant of the most typical (least extreme) and most extreme (least typical) weather periods of the simulation year.
+Previously, based on the advice of Zahra Fallahi, I chose four select days on which to base my first trial of clustering. Based on the results from the first trial, I saw that even good intentions were not successful in preventing bias in the clustering. Specifically, one of the hours I chose as a parameter happened to coincide with the annual peak cooling load for one of my zones ("1_BDRM_6_3"). For this second trial, I will try to be more cognizant of the most typical (least extreme) and most extreme (least typical) weather periods of the simulation year.
 
 ### TODO - get typical and extreme days
 
@@ -94,7 +96,7 @@ After that filter is done, I assert that it is `r nrow(sel_days_ILAS)==96` that 
 
 # Clustering
 
-You might think that they would only be heating loads on the winter extreme day, but in this builing type and climate, we find that there is more building cooling load [J] than heating load even during winter.
+You might think that they would only be heating loads on the winter extreme day, but in this building type and climate, we find that there is more building cooling load [J] than heating load even during winter.
 
 Traditionally, we would remove columns with zero variance as they are unhelpful in the sense of regression. However, in clustering we may want to leave them in.
 

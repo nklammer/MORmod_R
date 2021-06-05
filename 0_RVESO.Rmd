@@ -157,32 +157,8 @@ sorted_list <- stringr::str_sort(res_list, numeric = TRUE)
 ILAS <- ILAS[sorted_list]
 ```
 
-### Combine heating and cooling loads
-
-```{r}
-slist_unique <- unique(str_extract(colnames(ILAS),"(?<=SYSTEM\\s).+(?=\\:)"))
-
-# negate all variables that regexp match "Heating"
-index <- str_which(colnames(ILAS),"Heating")
-ILAS[,index] <- -ILAS[,index]
-
-# this computation takes the two cols that
-# share a zone name and adds them together
-for (i in slist_unique) {
-  index <- str_which(colnames(ILAS),i)
-  ILAS[,index[1]] <- ILAS[,index[1]] + ILAS[,index[2]]
-}
-
-# reset df to have only cooling cols
-# after above computation
-ILAS <- ILAS %>%
-  select(contains("Cooling"))
-
-```
-
-
 ### Add Date/Time back in
-```{r}
+```{r warning=FALSE}
 `Date/Time` <- eplusout$`Date/Time`
 ILAS <- cbind(`Date/Time`,ILAS)
 
@@ -205,12 +181,97 @@ ILAS <- ILAS[sorted_list]
 # numeric month var to month string
 # ILAS <- transform(ILAS, month = month.abb[month])
 
+```
+*Done* The variables of interest have been selected and observations of NA have been removed. The dataframe now has ``r ncol(ILAS)`` columns and ``r nrow(ILAS)`` rows.
+
+### Data QA/QC: remove observations with NA
+
+```{r}
 # remove NA observations
-ILAS <- ILAS %>% na.omit()
+# remove minute col if subhourly data DNE
+if( var(ILAS$minute)==0 | anyNA(ILAS) ) {
+  ILAS <- ILAS %>% na.omit()
+  ILAS <- select(ILAS,-minute)
+  }
 # remove the automatic row numbers
 # rownames(ILAS) <- NULL
 ```
-*Done* The variables of interest have been selected and observations of NA have been removed. The dataframe now has ``r ncol(ILAS)`` columns and ``r nrow(ILAS)`` rows.
+
+
+### Data QA/QC: zero variance
+
+```{r include=FALSE}
+
+sel_days_ILAS <- ILAS 
+
+# visdat::vis_cor(sel_days_ILAS)
+#=> "the standard deviation is zero"
+
+# let's find which cols have zero variance
+zv <- which(apply(sel_days_ILAS, 2, var) == 0)
+
+z_var_zones <- str_subset(colnames(sel_days_ILAS)[zv],"ZONE")
+
+# get zones that str match with "cooling"
+c <- grep("*\\Dooling", z_var_zones, value = TRUE)
+# get zones that str match with "heating"
+h <- grep("*\\Deating", z_var_zones, value = TRUE)
+
+# extracts zone name logic
+c <- str_extract(c,"(?<=SYSTEM\\s).*(?=\\:)")
+h <- str_extract(h,"(?<=SYSTEM\\s).*(?=\\:)")
+
+# are there any zones with neither heating nor cooling?
+# intersect(c,h)
+#=> unconditioned zones
+
+# remove the unc zones from
+# `zero_var_zone_names` string list
+z_var_zone_names <- unique( str_extract(z_var_zones,"(?<=SYSTEM\\s).*(?=\\:)") )
+z_var_zone_names <- z_var_zone_names[!(z_var_zone_names %in% intersect(c,h))]
+```
+
+The longer we work with this data set, the more clear it is that many zones have zero variance. We see that ``r length(z_var_zones)`` out of ``r length(sel_days_ILAS)`` zones have zero variance for this temporal range.
+
+We find that there are ``r length(c)`` zones with no cooling load and ``r length(h)`` zones with no heating load. We assert that `r intersect(c,h)` have neither cooling nor heating load. These zones are unconditioned spaces.
+
+Removing the ``r length(intersect(c,h))`` unconditioned zones, we are left with ``r length(z_var_zone_names)`` that have either no heating or cooling load, depending on the climate file. These zones are `r z_var_zone_names`.
+
+Naturally, for a correctly defined building energy model, few if any hours of a certain zone will have both heating and cooling. For possible future regression purposes, I will treat heating load as negative cooling load.
+
+### Combine heating and cooling loads
+
+```{r}
+# filter for zone col vars only
+slist <- str_subset(colnames(ILAS),"ZONE")
+# get zone name from output variable name
+slist_unique <- unique(str_extract(slist,"(?<=SYSTEM\\s).+(?=\\:)"))
+
+# negate all variables that regexp match "Heating"
+index <- str_which(colnames(ILAS),"Heating")
+ILAS[,index] <- -ILAS[,index]
+#=> RETURNS
+any(ILAS < 0)
+
+# this computation takes the two cols that
+# share a zone name and adds them together
+for (i in slist_unique) {
+  index <- str_which(colnames(ILAS),i)
+  ILAS[,index[1]] <- ILAS[,index[1]] + ILAS[,index[2]]
+}
+#=> RETURNS
+any(ILAS < 0)
+
+# reset df to have only cooling cols
+# after above computation
+ILAS <- ILAS %>%
+  select(contains("Cooling"))
+#=> RETURNS
+any(ILAS < 0)
+```
+
+
+
 
 ### Save as .Rda R data file
 
