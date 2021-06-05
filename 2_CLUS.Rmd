@@ -49,9 +49,13 @@ load(file = "ILAS.Rda")
 
 Previously, based on the advice of Zahra Fallahi, I chose four select days on which to base my first trial of clustering. Based on the results from the first trial, I saw that even good intentions were not successful in preventing bias in the clustering. Specifically, one of the hours I chose as a parameter happened to coincide with the annual peak cooling load for one of my zones ("1_BDRM_6_3"). For this second trial, I will try to be more cognizant of the most typical (least extreme) and most extreme (least typical) weather periods of the simulation year.
 
-### TODO - get typical and extreme days
+### Get typical and extreme days
 
-```{r}
+The following method leverages the `eplusr` package to identify the most typical weeks of the four North American seasons - Summer, Winter, Autumn, and Spring.
+
+I have used data filtering to the greatest extent but I worry that the number of observations is still too high for later clustering. Remember, zones are my points so hourly observations are actually my parameters after the necessary transform.
+
+```{r include=FALSE}
 
 view_me <- epw$typical_extreme_period()
 names <- epw$typical_extreme_period()$name
@@ -78,6 +82,18 @@ end_days <- as.numeric( str_extract(end_dates,"(?<=/)\\d+") )
 months_of_interest <- months_num # from typical weeks above
 hours_of_interest <- 8:20 # hours of operation
 
+
+num_obs <- ILAS %>%
+  filter(month %in% months_of_interest) %>% # 2,904 rows
+  filter(hour %in% hours_of_interest) %>%
+  nrow() # 1,573 rows
+```
+
+The typical weeks for Summer: ``r month.abb[months_num][1]`` week starting ``r start_days[1]``; Winter: ``r month.abb[months_num][2]`` week starting ``r start_days[2]``; Autumn: ``r month.abb[months_num][3]`` week starting ``r start_days[3]``; Spring: ``r month.abb[months_num][4]`` week starting ``r start_days[4]``.
+
+After filtering for only months ``r month.name[months_num]`` and operating hours 8:00 AM to 8:00 PM there still remains ``r num_obs`` observations. I believe we need a more targeted subselection of the dataframe. In the next code chunk I implement a subselection operation where only the four weeks of interest to us are selected. This required quite a bit more custom code but hopefully it is reusable.
+
+```{r}
 # seq(start_days, end_days) but vectorized
 x <- cbind(start_days, end_days)
 f_range <- function(x, from_, to_) seq(x[from_], x[to_])
@@ -95,27 +111,14 @@ for (set in colnames(x)) {
   idx <- append(idx,output)
   idx <- sort(idx)
 }
-ILAS[idx,] #=> 672 rows
+# ILAS[idx,] #=> 672 rows
 
-
-ILAS %>%
-  filter(month %in% months_of_interest) %>% # 2,904 rows
-  filter(hour %in% hours_of_interest) # 1,573 rows
-
+sel_days_ILAS <- ILAS[idx,] %>%
+  filter(hour %in% hours_of_interest) #=> 364 rows
 ```
 
 
-```{r}
-# change to numeric format of `day` and `month`
-days_of_interest <- c(21); months_of_interest <- c(1,4,8,10)
-
-sel_days_ILAS <- ILAS %>%
-  filter(day %in% days_of_interest, month %in% months_of_interest)
-
-```
-``
-
-After that filter is done, I assert that it is `r nrow(sel_days_ILAS)==96` that I have 96 (4 x 24) observations.
+After that custom filter is done, I have `r nrow(sel_days_ILAS)` observations.
 
 # Clustering
 
@@ -173,7 +176,7 @@ Let's introduce the `apcluster` package which is an implementation of Frey and D
 
 
 
-```{r message=FALSE, warning=FALSE, include=FALSE}
+```{r eval=FALSE}
 # select one zone var "Cooling Energy [J/m^2] Hourly"
 # select four hours (can be non-consecutive)
 
@@ -215,11 +218,10 @@ sub <- subset(ILAS, select = -c(day, hour, minute, month))
 
 ```
 
-To reduce the parameter space across which we cluster, we'll determine which hours of the year represent the building's thermal response curve. The zone that has the highest area-normalized cooling load is ``r max_cool_zone`` (needs to be normalized). This peak cooling load occurs at hour `r max_cool_hour` on `r paste0(max_cool_month,"/",max_cool_day)`. The zone that has the highest area-normalized heating load is ``r max_heat_zone`` (needs to be normalized). This peak heating load occurs at hour `r max_heat_hour` on `r paste0(max_heat_month,"/",max_heat_day)`.
 
 To start, we'll take the two aforementioned peak hours as rows as a subset of our annual data. We'll keep all the thermal zones.
 
-```{r}
+```{r eval=FALSE, include=TRUE}
 
 # get row for max cooling peak -- 
 # can get max heating in this way also
@@ -247,7 +249,7 @@ row_index <- function(h,d,m)
 
 ```
 
-```{r}
+```{r eval=FALSE, include=TRUE}
 library(apcluster)
 
 # choose subselection of hours (observations)
@@ -294,10 +296,6 @@ apcluster::plot(apres1, a)
 
 dev.off()
 ```
-
-
-### TODO - transform heating loads into negative cooling loads (move this upstream pipeline)
-Okay so actually some zones have both heating and cooling in one hour observation like hour 6000 for zone "0_BDRM_1_2".
 
 
 
