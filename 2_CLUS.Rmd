@@ -64,20 +64,43 @@ epw_strings <- c(
 )
 
 # names[c(2,4:6)]
-start_days <- as.character( epw$typical_extreme_period()$start_day[c(2,4:6)] )
-end_days <- as.character( epw$typical_extreme_period()$end_day[c(2,4:6)] )
+start_dates <- as.character( epw$typical_extreme_period()$start_day[c(2,4:6)] )
+end_dates <- as.character( epw$typical_extreme_period()$end_day[c(2,4:6)] )
+# => [1] " 08/21" " 4/18" "11/28" " 6/25"
 
 # look ahead regexp for month chars
-months_num <- as.numeric( str_extract(start_days,"\\d+(?=/)") )
+months_num <- as.numeric( str_extract(start_dates,"\\d+(?=/)") )
 
 # look behind regexp for day chars
-as.numeric( str_extract(start_days,"(?<=/)\\d+") )
-as.numeric( str_extract(end_days,"(?<=/)\\d+") )
+start_days <- as.numeric( str_extract(start_dates,"(?<=/)\\d+") )
+end_days <- as.numeric( str_extract(end_dates,"(?<=/)\\d+") )
 
-months_of_interest <- months_num
+months_of_interest <- months_num # from typical weeks above
+hours_of_interest <- 8:20 # hours of operation
+
+# seq(start_days, end_days) but vectorized
+x <- cbind(start_days, end_days)
+f_range <- function(x, from_, to_) seq(x[from_], x[to_])
+x <- apply(x, 1, f_range, from_ = "start_days", to_ = "end_days")
+colnames(x) <- as.character(months_num)
+
+# just remember that %in% is the
+# vectorized version of '=='
+
+# initialize vector to write for loop to
+idx = vector(mode = "numeric")
+for (set in colnames(x)) {
+  output <- which(ILAS$day %in% x[,set]
+        & ILAS$month == as.numeric(set))
+  idx <- append(idx,output)
+  idx <- sort(idx)
+}
+ILAS[idx,] #=> 672 rows
+
 
 ILAS %>%
-  filter(month %in% months_of_interest)
+  filter(month %in% months_of_interest) %>% # 2,904 rows
+  filter(hour %in% hours_of_interest) # 1,573 rows
 
 ```
 
@@ -99,7 +122,6 @@ After that filter is done, I assert that it is `r nrow(sel_days_ILAS)==96` that 
 You might think that they would only be heating loads on the winter extreme day, but in this building type and climate, we find that there is more building cooling load [J] than heating load even during winter.
 
 Traditionally, we would remove columns with zero variance as they are unhelpful in the sense of regression. However, in clustering we may want to leave them in.
-
 
 
 ```{r}

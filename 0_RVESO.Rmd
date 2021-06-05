@@ -262,10 +262,10 @@ for (i in slist_unique) {
 #=> RETURNS
 any(ILAS < 0)
 
-# reset df to have only cooling cols
+# reset df to drop "Heating" cols
 # after above computation
 ILAS <- ILAS %>%
-  select(contains("Cooling"))
+  select(-contains("Heating"))
 #=> RETURNS
 any(ILAS < 0)
 ```
