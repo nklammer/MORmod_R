@@ -73,6 +73,16 @@ area_map <- read_csv("ZoneFloorArea-Map.csv")
 
 Since the zone-area dataset and the Ideal Air Loads dataset may have different order, create a simple indexing function.
 
+### Drop Date/Time
+
+```{r warning=FALSE}
+# drop Date/Time col
+time_col <- ilas_df[,1]
+rownames(time_col) <- rownames(ilas_df) # rownames lost here
+ilas_df <- ilas_df[,-1] # rownames here
+```
+
+
 ### Inspect Zones and select only residential zones of interest
 
 Dwelling units, stairwells, and corridors above the first floor are all considered residential zones.
@@ -94,16 +104,12 @@ ilas_df <- ilas_df[sorted_list]
 ### Normalize Loads by Floor Area
 
 ```{r warning=FALSE}
-# drop Date/Time col
-time_col <- ilas_df[,1]
-rownames(time_col) <- rownames(ilas_df) # rownames lost here
-ilas_df <- ilas_df[,-1] # rownames here
-
 idx_s <- function(str) {
   which(str==area_map$`Zone List`)
   }
 # change regex
-slist <- str_extract(colnames(ilas_df),".+(?=\\sILAS|\\sI)" ) # any char followed by ' ILAS' or ' I'
+regex_str <- ".+(?=\\sILAS|\\sI)" # any char followed by ' ILAS' or ' I'
+slist <- str_extract(colnames(ilas_df), regex_str)
 colnames(ilas_df) <- slist
 idx2 <- sapply(slist,idx_s)
 vec <- area_map$`Space Area [m2]`[idx2]
@@ -116,7 +122,6 @@ ilas_df <- sweep(ilas_df, 2, vec, FUN = "/")
 rownames(ilas_df) <- str_replace(rownames(ilas_df),"(?<=\\[)J{1}","J/m^2")
 rownames(ilas_df) <- paste(eighty760_labels, "Ideal Tot. Clg Load [J/m^2]")
 ```
-
 
 ### Add Date/Time back in
 
