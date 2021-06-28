@@ -1,7 +1,7 @@
 ---
-title: "Process ReadVarsESO csv"
+title: "Step 1: Preprocess data for analysis"
 author: "Noah Klammer"
-date: "3/15/2021"
+date: "6/27/2021"
 output: html_document
 ---
 
@@ -20,21 +20,23 @@ gc()
 
 # Import
 
-## ESO timeseries
+## ESO timeseries from "zemf_ilas_nodhw_eso"
 
 ```{r import, message=FALSE, warning=FALSE}
 library(readr)
-ilas_nodhw <- read_csv("ilas_nodhw_eso.csv", 
+ilas_df <- read_csv("data_in/zemf_ilas_nodhw_eso.csv", 
     skip = 3)
-colnames(ilas_nodhw)[1] <- "Date/Time"
-#View(ilas_nodhw)
+colnames(ilas_df)[1] <- "Date/Time"
+#View(ilas_df)
+
+
 ```
 
 
 ```{r infer time sampling, include=FALSE}
-# readr::spec(ilas_nodhw)
+# readr::spec(ilas_df)
 freq <- "null"
-rows <- nrow(ilas_nodhw) 
+rows <- nrow(ilas_df) 
 if (rows==8760*4) {
   freq <- "15 minutes"
 } else if (rows==8760) {
@@ -43,42 +45,58 @@ if (rows==8760*4) {
   freq <- "monthly"
 } else {freq <- "could not determine"}
 ```
-There are ``r ncol(ilas_nodhw)`` column variables in this file with names like ``r names(ilas_nodhw)[3]``, ``r names(ilas_nodhw)[6]``, and ``r names(ilas_nodhw)[50]``.
+There are ``r ncol(ilas_df)`` column variables in this file with names like ``r names(ilas_df)[3]``, ``r names(ilas_df)[6]``, and ``r names(ilas_df)[50]``.
 
 The frequency of this .eso file's timestep is ``r freq``.
 
+### Time names for rows
+
+Named rows are helpful labels for a dataframe without 'being' data per se.
+
+```{r warning=FALSE}
+# probably just easier to do this in Excel
+eighty760_labels <- str_replace(ilas_df$`Date/Time`,"/\\d{4}","") # take out year
+rownames(ilas_df) <- eighty760_labels
+
+rownames(ilas_df) <- paste(ilas_df$`Date/Time`,"Ideal Tot. Clg Load [J]") # Add in variable name
+# rownames intact here
+```
+
 ## Area to Zone mapping
+
+Load in an external data set of rows with two attributes: zone name and floor area in m^2.
 
 ```{r message=FALSE, warning=FALSE}
 area_map <- read_csv("ZoneFloorArea-Map.csv")
+# rownames intact here
 ```
 
+Since the zone-area dataset and the Ideal Air Loads dataset may have different order, create a simple indexing function.
 
 ### Normalize Loads by Floor Area
 
-```{r}
-# check here if var names ever change
-# colnames(ilas_nodhw)
-
+```{r warning=FALSE}
 # drop Date/Time col
-time_col <- ilas_nodhw[,1]
-ilas_nodhw <- ilas_nodhw[,-1]
+time_col <- ilas_df[,1]
+rownames(time_col) <- rownames(ilas_df) # rownames lost here
+ilas_df <- ilas_df[,-1] # rownames here
 
 idx_s <- function(str) {
   which(str==area_map$`Zone List`)
   }
 # change regex
-slist <- str_extract(colnames(ilas_nodhw),".+(?=\\sILAS)") # any char followed by ' ILAS'
-colnames(ilas_nodhw) <- slist
+slist <- str_extract(colnames(ilas_df),".+(?=\\sILAS|\\sIdeal)" ) # any char followed by ' ILAS' or ' Ideal'
+colnames(ilas_df) <- slist
 idx2 <- sapply(slist,idx_s)
 vec <- area_map$`Space Area [m2]`[idx2]
 
 # apply normalization vector across columns
-ilas_nodhw <- sweep(ilas_nodhw, 2, vec, FUN = "/") 
+ilas_df <- sweep(ilas_df, 2, vec, FUN = "/") 
 
 # change colnames to reflect metric
 # **[J]** => [J/m^2]
-colnames(ilas_nodhw) <- str_replace(colnames(ilas_nodhw),"(?<=\\[)J{1}","J/m^2")
+rownames(ilas_df) <- str_replace(rownames(ilas_df),"(?<=\\[)J{1}","J/m^2")
+rownames(ilas_df) <- paste(eighty760_labels, "Ideal Tot. Clg Load [J/m^2]")
 ```
 
 ### Inspect Zones and select only residential zones of interest
@@ -88,62 +106,59 @@ Dwelling units, stairwells, and corridors above the first floor are all consider
 ```{r}
 res_list <- 
 c(
-grep("STAIRWELL_\\d", colnames(ilas_nodhw), value = TRUE),
-grep("CORRIDOR_\\d", colnames(ilas_nodhw), value = TRUE),  
-grep("BDRM", colnames(ilas_nodhw), value = TRUE)
+grep("STAIRWELL_\\d", colnames(ilas_df), value = TRUE),
+grep("CORRIDOR_\\d", colnames(ilas_df), value = TRUE),  
+grep("BDRM", colnames(ilas_df), value = TRUE)
 )
 
 sorted_list <- stringr::str_sort(res_list, numeric = TRUE)
 
-ilas_nodhw <- ilas_nodhw[sorted_list]
+ilas_df <- ilas_df[sorted_list]
 ```
 
 ### Add Date/Time back in
+
 ```{r warning=FALSE}
 `Date/Time` <- time_col
-ilas_nodhw <- cbind(`Date/Time`,ilas_nodhw)
+ilas_df <- cbind(`Date/Time`,ilas_df)
+```
 
-# make `Date/Time` string rownames
-# this comes in handy for dataframe transpose
-# drop hh:mm~:ss~ BUT results viewer didn't give us that time format
-# probably just easier to do this in Excel
-rownames(ilas_nodhw) <- str_replace(ilas_nodhw$`Date/Time`,"/\\d{4}","") # take out year
+### Create columns for categorical month, day, hour, minute
 
-rownames(ilas_nodhw) <- paste(ilas_nodhw$`Date/Time`,"Ideal Total Cooling Load") # Add in variable name
-
+```{r warning=FALSE}
 # separate the date and time into cols month, day, hour, minute
 # make sure to have two digits for all days and months
-ilas_nodhw <- ilas_nodhw %>%
+ilas_df <- ilas_df %>%
   mutate(month = as.integer(substr(`Date/Time`, start = 1, stop = 2)),
          day = as.integer(substr(`Date/Time`, start = 4, stop = 5)),
          hour = as.integer(substr(`Date/Time`, start = 7, stop = 8)), # hour is not working
          `Date/Time` = as.integer(substr(`Date/Time`, start = 10, stop = 11))) %>%
   rename(minute = `Date/Time`)
 
-sorted_list <- stringr::str_sort(colnames(ilas_nodhw), numeric = TRUE)
+sorted_list <- stringr::str_sort(colnames(ilas_df), numeric = TRUE)
 
-ilas_nodhw <- ilas_nodhw[sorted_list]
+ilas_df <- ilas_df[sorted_list]
 # numeric month var to month string
-# ilas_nodhw <- transform(ilas_nodhw, month = month.abb[month])
+# ilas_df <- transform(ilas_df, month = month.abb[month])
 
 ```
-*Done* The variables of interest have been selected and observations of NA have been removed. The dataframe now has ``r ncol(ilas_nodhw)`` columns and ``r nrow(ilas_nodhw)`` rows.
+
 
 ### Data QA/QC: remove observations with NA
 
 ```{r}
 # remove NA observations
 # remove minute col if subhourly data DNE
-if (is.null(ilas_nodhw$minute)) { # do nothing, check if exists
-  } else if (var(ilas_nodhw$minute)==0) { # take out minute with zero variance
-  ilas_nodhw <- select(ilas_nodhw,-minute)} else { # do nothing
+if (is.null(ilas_df$minute)) { # do nothing, check if exists
+  } else if (var(ilas_df$minute)==0) { # take out minute with zero variance
+  ilas_df <- select(ilas_df,-minute)} else { # do nothing
   }
 
-if (anyNA(ilas_nodhw)) { # then
-  ilas_nodhw <- ilas_nodhw %>% na.omit()
+if (anyNA(ilas_df)) { # then
+  ilas_df <- ilas_df %>% na.omit()
 }
 # remove the automatic row numbers
-# rownames(ilas_nodhw) <- NULL
+# rownames(ilas_df) <- NULL
 ```
 
 
@@ -151,15 +166,15 @@ if (anyNA(ilas_nodhw)) { # then
 
 ```{r include=FALSE}
 
-sel_days_ilas_nodhw <- ilas_nodhw 
+sel_days_ilas_df <- ilas_df 
 
-# visdat::vis_cor(sel_days_ilas_nodhw)
+# visdat::vis_cor(sel_days_ilas_df)
 #=> "the standard deviation is zero"
 
 # let's find which cols have zero variance
-zv <- which(apply(sel_days_ilas_nodhw, 2, var) == 0)
+zv <- which(apply(sel_days_ilas_df, 2, var) == 0)
 
-z_var_zones <- str_subset(colnames(sel_days_ilas_nodhw)[zv],"")
+z_var_zones <- str_subset(colnames(sel_days_ilas_df)[zv],"")
 
 # get zones that str match with "cooling"
 c <- z_var_zones
@@ -179,7 +194,7 @@ c <- z_var_zones
 z_var_zone_names <- z_var_zones
 ```
 
-The longer we work with this data set, the more clear it is that many zones have zero variance. We see that ``r length(z_var_zones)`` out of ``r length(sel_days_ilas_nodhw)`` zones have zero variance for this temporal range.
+The longer we work with this data set, the more clear it is that many zones have zero variance. We see that ``r length(z_var_zones)`` out of ``r length(sel_days_ilas_df)`` zones have zero variance for this temporal range.
 
 We find that there are ``r length(c)`` zones with no cooling load and `0` zones with no heating load. We assert that `r length(z_var_zones)` have neither cooling nor heating load. These zones are unconditioned spaces.
 
@@ -189,7 +204,7 @@ Naturally, for a correctly defined building energy model, few if any hours of a 
 ### Save as .Rda R data file
 
 ```{r}
-save(ilas_nodhw,file = "ilas_nodhw.Rda")
+save(ilas_df,file = "ilas_nodhw.Rda")
 ```
 
 
