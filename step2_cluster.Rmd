@@ -1,7 +1,7 @@
 ---
-title: "Cluster and Analyze 2"
+title: "Cluster and Analyze"
 author: "Noah Klammer"
-date: "6/04/2021"
+date: "4/27/2021"
 output: html_document
 ---
 
@@ -19,9 +19,7 @@ gc()
 
 # Intro
 
-This is my second attempt at clustering of zones using the ideal air loads output variable.
-
-In this instance, I am using Zone Ideal Air Loads extracted from an EnergyPlus `in.idf` with the weather file `USA_CA_Los.Angeles.Intl.AP.722950_TMY3.ddy`. The Zone Ideal Load Air System ("ILAS") numerical `colnames` were `str_replace`d to match the `Name` field of the `Zone` object in the predecessor file `0_RVESO.Rmd`. Loads were normalized by zone floor area. That file also exported a R data file object `ILAS.Rda`. In this file `2_CLUS.Rmd` we will import both Ideal Load Air System data and weather data via the connector package `eplusr`. We will visualize this data for exploration. We will create report figures. We will attempt clustering of the ideal air loads for a subset of 8760 observations. Note that the nth observation in the `hour` variable corresponds to the average of the period from (n-1)th hour to nth hour.
+In this instance, I am using Zone Ideal Air Loads extracted from an EnergyPlus `in.idf` with the weather file `USA_CA_Los.Angeles.Intl.AP.722950_TMY3.ddy`. The Zone Ideal Load Air System ("ILAS") numerical `colnames` were `str_replace`d to match the `Name` field of the `Zone` object in the predecessor file `0_RVESO.Rmd`. Loads were normalized by zone floor area. That file also exported a R data file object `ILAS.Rda`. In this file `1_CLUS.Rmd` we will import both Ideal Load Air System data and weather data via the connector package `eplusr`. We will visualize this data for exploration. We will create report figures. We will attempt clustering of the ideal air loads for a subset of 8760 observations. Note that the nth observation in the `hour` variable corresponds to the average of the period from (n-1)th hour to nth hour.
 
 ## Import EPW
 
@@ -41,94 +39,122 @@ epw$data() %>%
 
 ## Import Rda of Zone Ideal Loads Air System
 
+The responsible model for this data resides in the project folder `MORmod_mf/sddc_osw_multifamily/*/in/run`.
+
 ```{r import, message=FALSE, warning=FALSE}
-load(file = "ILAS.Rda")
+load(file = "ilas_nodhw.Rda")
 ```
 
-### Select N hours to cluster in N-space
+### Select four days to cluster in 24-d vector
 
-Previously, based on the advice of Zahra Fallahi, I chose four select days on which to base my first trial of clustering. Based on the results from the first trial, I saw that even good intentions were not successful in preventing bias in the clustering. Specifically, one of the hours I chose as a parameter happened to coincide with the annual peak cooling load for one of my zones ("1_BDRM_6_3"). For this second trial, I will try to be more cognizant of the most typical (least extreme) and most extreme (least typical) weather periods of the simulation year.
-
-### Get typical and extreme days
-
-The following method leverages the `eplusr` package to identify the most typical weeks of the four North American seasons - Summer, Winter, Autumn, and Spring.
-
-I have used data filtering to the greatest extent but I worry that the number of observations is still too high for later clustering. Remember, zones are my points so hourly observations are actually my parameters after the necessary transform.
-
-```{r include=TRUE}
-view_me <- epw$typical_extreme_period()
-view_me$name
-```
-
-```{r include=FALSE}
-# names[c(2,4:6)]
-start_dates <- as.character( epw$typical_extreme_period()$start_day[c(2,4:6)] )
-end_dates <- as.character( epw$typical_extreme_period()$end_day[c(2,4:6)] )
-# => [1] " 08/21" " 4/18" "11/28" " 6/25"
-
-# look ahead regexp for month chars
-months_num <- as.numeric( str_extract(start_dates,"\\d+(?=/)") )
-
-# look behind regexp for day chars
-start_days <- as.numeric( str_extract(start_dates,"(?<=/)\\d+") )
-end_days <- as.numeric( str_extract(end_dates,"(?<=/)\\d+") )
-
-months_of_interest <- months_num # from typical weeks above
-hours_of_interest <- 8:20 # hours of operation
-
-
-num_obs <- ILAS %>%
-  filter(month %in% months_of_interest) %>% # 2,904 rows
-  filter(hour %in% hours_of_interest) %>%
-  nrow() # 1,573 rows
-```
-
-The typical week for Summer is: ``r month.abb[months_num][1]`` week starting ``r start_days[1]``; Winter: ``r month.abb[months_num][2]`` week starting ``r start_days[2]``; Autumn: ``r month.abb[months_num][3]`` week starting ``r start_days[3]``; Spring: ``r month.abb[months_num][4]`` week starting ``r start_days[4]``.
-
-After filtering for only months ``r month.name[months_num]`` and operating hours 8:00 AM to 8:00 PM there still remains ``r num_obs`` observations. I believe we need a more targeted subselection of the dataframe. In the next code chunk I implement a subselection operation where only the four weeks of interest to us are selected. This required quite a bit more custom code but hopefully it is reusable.
+I have selected the following dates of interest: January 21, April 21, August 21, and October 21 from preliminary visualization in the Climate Consultant desktop app. I create two vectors, `days_of_interest = c(21)` and `months_of_interest = c(1,4,8,10)` then use a pipe `filter` to get my result. As of now there are two separate dataframes, `epw` for weather and `ILAS` for Zone Ideal Loads.
 
 ```{r}
-# seq(start_days, end_days) but vectorized
-x <- cbind(start_days, end_days)
-f_range <- function(x, from_, to_) seq(x[from_], x[to_])
-x <- apply(x, 1, f_range, from_ = "start_days", to_ = "end_days")
-colnames(x) <- as.character(months_num)
+# change to numeric format of `day` and `month`
+days_of_interest <- c(21); months_of_interest <- c(1,4,8,10)
 
-# just remember that %in% is the
-# vectorized version of '=='
+sel_days_ILAS <- ilas_nodhw %>%
+  filter(day %in% days_of_interest, month %in% months_of_interest)
 
-# initialize vector to write for loop to
-idx = vector(mode = "numeric")
-for (set in colnames(x)) {
-  output <- which(ILAS$day %in% x[,set]
-        & ILAS$month == as.numeric(set))
-  idx <- append(idx,output)
-  idx <- sort(idx)
-}
-# ILAS[idx,] #=> 672 rows
+```
 
-sel_days_ILAS <- ILAS[idx,] %>%
-  filter(hour %in% hours_of_interest) #=> 364 rows
+```{r}
+sel_days_epw <- epw$data() %>%
+  select(month, day, hour, dry_bulb_temperature) %>%
+  filter(day %in% days_of_interest, month %in% months_of_interest)
+```
+
+After that filter is done, I assert that it is `r nrow(sel_days_ILAS)==96` that I have 96 (4 x 24) observations.
+
+
+# Visualizations 
+
+Under this section I have code that opens the `grDevices` connection and writes custom figures to bitmap files in the containing folder. The image outputs are shown below.
+
+### faceted ggplot for select 4 days
+
+```{r RUN FOR 4 IMAGE, eval=FALSE, include=FALSE}
+library(ggplot2)
+# Jan, Apr, Aug, Oct
+
+x <- sel_days_epw
+
+# set resolution
+png("4days.png", units = "in", width = 8, height = 5, res = 500)
+
+# have to tell aes that the variable is a discrete `factor`
+p <- ggplot(x, aes(x = hour, y = dry_bulb_temperature, color = factor(month))) + geom_smooth(se = F, span = 0.3)
+
+# new facet label names for month variable
+month.labs <- c("January 21","April 21","August 21","October 21")
+names(month.labs) <- months_of_interest
+
+p + facet_grid(rows = vars(month), labeller = labeller(month = month.labs)) + scale_color_discrete(name = "Month", labels = month.name[months_of_interest]) + scale_x_continuous(name = "Hour", breaks = c(1,6,12,18,24)) + theme_bw() + theme(legend.position = "none", axis.title.y = element_text(margin = margin(r=10))) + labs(y = "Dry Bulb Temperature (C)")
+
+dev.off()
+```
+
+Dry bulb temperature versus hour for four select days in the typical Los Angeles meteorological year: ![](4days.png)
+
+### faceted ggplot for 365 days
+
+```{r eval=FALSE, include=FALSE}
+# make unique day index 1..365
+d <- nrow(ilas_nodhw)/24
+d_ind <- rep(1:d, each = 24)
+
+# alternative 2 with iteration
+# c_vec <- vector(mode = "numeric", nrow(ilas_nodhw)) # instantiate
+# for (i in length(c_vec)) { # control flow
+#   if (logic) {i <<- i + 1} # iterator
+# }
+
 ```
 
 
-After that custom filter is done, I have `r nrow(sel_days_ILAS)` observations.
+```{r RUN FOR 365 IMAGE, eval=FALSE, include=FALSE}
+library(ggplot2)
+# Jan 31 days
+sel_days_epw <- cbind(d_ind, epw$data()) %>%
+  select(d_ind, month, day, hour, dry_bulb_temperature) %>%
+  filter(month %in% c(1:12))
+
+x <- sel_days_epw
+
+# set resolution
+png("365.png", units = "in", width = 8, height = 5, res = 500)
+
+# custom color palette named vector
+colorv <- rep( 
+  RColorBrewer::brewer.pal(8, name = "Dark2"),
+  length.out = 12)
+names(colorv) <- 1:12
+
+# have to tell aes that the variable is a discrete `factor`
+p <- ggplot(x, aes(x = hour, y = dry_bulb_temperature, color = factor(month))) + geom_smooth(se = F, span = 0.35)
+
+p + facet_wrap(~d_ind) + scale_color_manual(name = "Month", labels = month.abb, values = colorv) + scale_x_discrete(labels = NULL) + scale_y_discrete(labels = NULL) + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12))) + labs(x = NULL, y = "Drybulb temperature")
+
+dev.off()
+```
+
+Dry bulb temperature versus time of the full 365 days of the typical meteorological year for Los Angeles: ![](365.png)
+
+
 
 # Clustering
 
-You might think that they would only be heating loads on the winter extreme day, but in this building type and climate, we find that there is more building cooling load [J] than heating load even during winter.
+### TODO - take ilas_nodhw from one day, January 21
+
+You might think that they would only be heating loads on the winter extreme day, but in this model and climate, we find that there is more building cooling load [J] than heating load.
 
 Traditionally, we would remove columns with zero variance as they are unhelpful in the sense of regression. However, in clustering we may want to leave them in.
 
-
 ```{r}
-# drop time date cols in
-# preparation for clustering
-if ("minute" %in% colnames(sel_days_ILAS)) {
-  sel_days_ILAS <- subset(sel_days_ILAS, select = -c(day, hour, month, minute))
-} else {
-  sel_days_ILAS <- subset(sel_days_ILAS, select = -c(day, hour, month))
-}
+days_of_interest <- c(21); months_of_interest <- c(8)
+
+sel_days_ILAS <- ilas_nodhw %>%
+  filter(day %in% days_of_interest, month %in% months_of_interest)
 
 # transpose col variables to observation rows
 # a matrix-like object must have the same class for all cols
@@ -138,113 +164,177 @@ if ("minute" %in% colnames(sel_days_ILAS)) {
 # t
 # need col names
 t <- as.data.frame(t(sel_days_ILAS))
-# not needed
-#colnames(t) <- sel_days_ILAS$hour
+colnames(t) <- sel_days_ILAS$hour
 
 # "the standard deviation is zero"?
 # visdat::vis_cor(sel_days_ILAS)
 
+# let's find which columns have zero variance
+zv <- which(apply(sel_days_ILAS, 2, var) == 0)
+zero_var_zones <- colnames(sel_days_ILAS)[zv]
+
+# get zones that str match with "cooling"
+c <- grep("*\\Dooling", zero_var_zones, value = TRUE)
+# get zones that str match with "heating"
+h <- grep("*\\Deating", zero_var_zones, value = TRUE)
+
+# extracts zone name logic
+c <- str_extract(c,"(?<=SYSTEM\\s).*(?=\\:)")
+h <- str_extract(h,"(?<=SYSTEM\\s).*(?=\\:)")
+
+# are there any zones with neither heating nor cooling?
+intersect(c,h)
 ```
+
+The longer we work with this data set, the more clear it is that many zones have zero variance. We see that `r length(zero_var_zones)` out of `r length(sel_days_ILAS)` zones have zero variance for this temporal range.
+
+In `r month.name[months_of_interest]`, we find that there are `r length(c)` zones with no cooling load and `r length(h)` zones with no heating load. We assert that `r length(intersect(c,h))` have neither cooling nor heating load.
+
+What's going on? No cooling/heating energy in `CORRIDOR_2`, `CORRIDOR_3`, or `CORRIDOR_4`. They must be unconditioned.
+
 
 ### Transpose and cluster
 
-Let's introduce the `apcluster` package which is an implementation of Frey and Dueck's popular Affinity Propagation method for passing messages between pairs of data. I would make sure to reference the [math paper](https://doi.org/10.1080/19401493.2017.1410572), the [R package](https://doi.org/10.1093/bioinformatics/btr406), and the [original method's](https://doi.org/10.1126/science.1136800) publication.
+Let's introduce the `apcluster` package which is an implementation of Frey and Dueck's popular Affinity Propagation method for passing messages between pairs of data. I would make sure to reference the [inspiration paper](https://doi.org/10.1080/19401493.2017.1410572), the [R package](https://doi.org/10.1093/bioinformatics/btr406), and the [original method's](https://doi.org/10.1126/science.1136800) publication.
 
 
-We'll keep all the thermal zones. We take only the subset of hours based on previous discussion.
 
-```{r eval=TRUE, warning=FALSE, include=TRUE}
+```{r message=FALSE, warning=FALSE, include=FALSE}
+# select one zone var "Cooling Energy [J/m^2] Hourly"
+# select four hours (can be non-consecutive)
+
+# get the maximum cooling value hour
+# hint: it's not DDY
+
+
+# take 99.6% percentile cooling
+# greatest cooling load is "2_BDRM_1_3"
+a <- ilas_nodhw %>%
+  arrange(desc(`ZONE HVAC IDEAL LOADS AIR SYSTEM 2_BDRM_1_3: Cooling Energy [J/m^2](Hourly)`))
+max_cool_hour <- a$hour[1]; max_cool_day <- a$day[1]; max_cool_month <- a$month[1];
+
+# take 99.6% percentile heating
+# greatest heating load is "2_BDRM_3_4"
+a <- ilas_nodhw %>%
+  arrange(desc(`ZONE HVAC IDEAL LOADS AIR SYSTEM 2_BDRM_3_4: Heating Energy [J/m^2](Hourly)`))
+max_heat_hour <- a$hour[1]; max_heat_day <- a$day[1]; max_heat_month <- a$month[1];
+
+#########
+max_heat <- ilas_nodhw %>%
+  select(contains("Heating")) %>%
+  sapply(max)
+
+max_heat_zone <- names(which(max_heat==max(max_heat)))
+
+#########
+
+max_cool <- ilas_nodhw %>%
+  select(contains("Cooling")) %>%
+  sapply(max)
+
+max_cool_zone <- names(which(max_cool==max(max_cool)))
+
+#########
+
+max_heat <- ilas_nodhw %>%
+  select(contains("Heating")) %>%
+  summarize(across(,max))
+
+# drop temporal columns to prepare for clustering  
+sub <- subset(ilas_nodhw, select = -c(day, hour, minute, month))
+
+```
+
+To reduce the parameter space across which we cluster, we'll determine which hours of the year represent the building's thermal response curve. The zone that has the highest area-normalized cooling load is ``r max_cool_zone`` (needs to be normalized). This peak cooling load occurs at hour `r max_cool_hour` on `r paste0(max_cool_month,"/",max_cool_day)`. The zone that has the highest area-normalized heating load is ``r max_heat_zone`` (needs to be normalized). This peak heating load occurs at hour `r max_heat_hour` on `r paste0(max_heat_month,"/",max_heat_day)`.
+
+To start, we'll take the two aforementioned peak hours as rows as a subset of our annual data. We'll keep all the thermal zones.
+
+```{r}
+
+# get row for max cooling peak -- 
+# can get max heating in this way also
+max_cool_row <- which(max(max_cool)==ilas_nodhw[[max_cool_zone]])
+max_heat_row <- which(max(max_heat)==ilas_nodhw[[max_heat_zone]])
+
+# add shoulder days
+# should represent periods of peak and off-peak schedules
+# weekday vs weekend (calendar year 2019)
+ilas_nodhw %>%
+  select(month,day,hour,`ZONE HVAC IDEAL LOADS AIR SYSTEM 2_BDRM_3_4: Heating Energy [J/m^2](Hourly)`) %>%
+  arrange(desc(`ZONE HVAC IDEAL LOADS AIR SYSTEM 2_BDRM_3_4: Heating Energy [J/m^2](Hourly)`)) %>%
+  slice(seq(1,10))
+
+# like 05:00 March 19 (wd), and 22:00 Sept 28 (we)
+# need high heating day during operation - 10:00 January 7 (wd)
+# need high cooling day outside of operation - 08:00 August 18 (we)
+row_index <- function(h,d,m)
+  {return(which(ilas_nodhw$hour==h & ilas_nodhw$day==d & ilas_nodhw$month==m))}
+
+
+###########
+
+```
+
+```{r}
 library(apcluster)
 
-# transpose, observations are now parameters, vice versa
-a <- t
+# choose subselection of hours (observations)
+sub_rows <- c(max_heat_row, row_index(5,19,3), max_cool_row)
+
+# select only cooling load vars
+a <- ilas_nodhw %>%
+  select(contains("Cooling")) %>%
+  slice(sub_rows)
+
+# transpose, observations are now variable, vice versa
+a <- as.data.frame(t(a))
 
 # add chars to var names **Zone Cooling [J/m^2]**
-colnames(a) <- paste(colnames(a), "Zone Cooling Energy [J/m^2](Hourly)")
+colnames(a) <- paste(colnames(a),c("Zone Heating [J/m^2]", rep("Zone Cooling [J/m^2]",2)))
 # drop all chars but ZONE NAME from observations
 rownames(a) <- str_extract(rownames(a),"(?<=SYSTEM\\s).+(?=\\:)")
 
+# need to take transpose
 # observations are zones, parameters are select hours
-apres1 <- apcluster::apcluster(negDistMat(r=2), a, details = TRUE)
-apres1
-plot(apres1)
+apcluster::apcluster(negDistMat(r=2), a)
+apres1 <- apcluster::apcluster(negDistMat(r=2), a)
 
 # illustrative purposes only
 # use apcluster's plot(apdata, data) scatterplot overlay
 # need to alter t(a) so variables have better names
-
-#apcluster::plot(apres1, a)
+apcluster::plot(apres1, a)
 
 # use apcluster::aggExCluster() for agglomerative dendogram
 aggres1 <- aggExCluster(negDistMat(r=2), a)
 plot(aggres1)
+
 ```
 
-```{r}
-# remove plot title
-# righthand labs getting cut off
-png(filename = "Rplot_test.png", width = 600, height = 900, units = "px")
-# mar=c(bot,left,top,right)
-par(mar=c(5.1,4.1,4.1,5.1))
-plot(aggres1, main = NULL, xlab = "Average Similarity \n (negative square of Euclidean distance)", nodePar = list(pch = c(1,NULL), cex = .6*2:1, col = 2:3, lab.cex = c(2,1)),
-     horiz = TRUE)
-# http://www.sthda.com/english/wiki/beautiful-dendrogram-visualizations-in-r-5-must-known-methods-unsupervised-machine-learning
+What's up with `1_BDRM_6_3`? Investigate this.
+
+### make nice graphic export
+
+```{r eval=FALSE, include=FALSE}
+# set resolution
+png("3var_cluster.png", units = "in", width = 8, height = 5, res = 500)
+
+apcluster::plot(apres1, a)
+
 dev.off()
 ```
-![](Rplot_test.png)
 
-The height variable is maybe similarity or affinity? The height determines the threshold at which to cut the tree (can also specify k clusters).
+![](3var_cluster.png)
 
-The heights of the merges in the dendrogram correspond to the merging objective: the higher the vertical bar of a merge, the less similar the two clusters have been. The dendrogram, therefore,
-clearly indicates *X* clusters.
+### TODO - transform heating loads into negative cooling loads
 
-### apcluster::aggExCluster
+The climate in coastal California is cooling-dominated so there is a certain logic to casting heating loads as the opposite of cooling loads. For future analysis, combine the heating and cooling loads into one variable. Since this model has been quality checked, there should never be hours with both heating and cooling.
 
-#### Details
-aggExCluster performs agglomerative clustering. Unlike other methods, e.g., the ones implemented in hclust, aggExCluster is computing exemplars for each cluster and its merging objective is geared towards the identification of meaningful exemplars, too.
+### TODO - get typical days
 
+Post analysis, during writing, I investigated further into why there is such a strong outlier in the zone '1_BDRM_6_3' which is the sixth one-bedroom unit on the third floor of the model. It turns out that it is an unfortunate coincidence that the three representative hours I picked for the annual simulation just happened to include the peak cooling time for that zone as confirmed by the `eplustbl.html` report file.
 
-
-...Then the average similarity of the exemplar with all samples in the **first cluster** and the average similarity with all samples in the **second cluster** is computed. These two values measure how well the joint exemplar describes the samples in the two clusters.
-
-The merging objective is finally computed as the **average** of the two measures above. Hence, we can consider the merging objective as some kind of “balanced average similarity to the joint exemplar”.
+In the future we can address this risk of outlier by including more parameters for the clustering algorithm (like the operating hours for the whole month of August). Another approach would be to use the `eplusr` package's `typical_extreme_period()` function to find out the most typical (least extreme) days in the simulation year.
 
 
-aggExCluster can be used in two ways, either by performing agglomerative clustering of an entire data set or by performing agglomerative clustering of data previously clustered by affinity propagation or another clustering algorithm.
-
-
-
-```{r}
-# try phylogram
-# looks clipped in IDE but compiles just fine
-library(ape)
-hc <- as.hclust(aggres1)
-
-# Cut the dendrogram into 4 clusters
-#colors = c("red", "blue", "green", "black")
-colors = 1:8
-clus = stats::cutree(hc, 8)
-par(xpd = TRUE) # b, l, t, r
-plot(as.phylo(hc), type = "fan", tip.color = colors[clus],
-     label.offset = 0.05, cex = 0.5)
-```
-
-
-I hope I'm not getting confused here but it seems that clustering in 364-space was almost as fast as 3-space. Could be that the small number of observations (54) speeds up clustering computation. This is good news. Perhaps I should look into the original Frey and Dueck paper for notes on the computational limiting factors.
-
-I think the agglomerative tree diagram is informative. The exemplar-based agglomerative clustering result is a large digital object at 674 KB, in taxonomical terms, this reminds me of a random forest method. See the help entry `help("aggExCluster)` and its simpler counterpart `help("hclust")`.
-
-Talk about the distance matrix / similarity matrix computation. This implementation of `negDistMat()` uses the negative square of Euclidean distances to compute dissimilarity. Other options for computing (dis)similarity are available to the `apcluster` method including:
-
-* Euclidean `method = "euclidean"`
-* Maximum `method = "maximum"`
-* Sum of absolute distances `method = "manhattan"`
-* Canberra `method = "canberra"`
-* Minkowski `method = "minkowski"`
-* Discrepancy `method = "discrepancy"`
-
-
-
-# End
 
 <br><br><br>

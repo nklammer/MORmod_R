@@ -1,0 +1,222 @@
+---
+title: "Step 1: Preprocess data for analysis"
+author: "Noah Klammer"
+date: "6/27/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## Clear global and report
+
+```{r}
+rm(list = ls())
+gc()
+```
+
+
+# Import
+
+## ESO timeseries from "zemf_mini_erv_dhw_novar_eso"
+
+```{r import, message=FALSE, warning=FALSE}
+library(readr)
+hvac_df <- read_csv("data_in/zemf_mini_erv_dhw_novar_eso.csv", 
+    skip = 3)
+colnames(hvac_df)[1] <- "Date/Time"
+#View(hvac_df)
+
+```
+
+
+```{r infer time sampling, include=FALSE}
+# readr::spec(hvac_df)
+freq <- "null"
+rows <- nrow(hvac_df) 
+if (rows==8760*4) {
+  freq <- "15 minutes"
+} else if (rows==8760) {
+  freq <- "hourly"
+} else if (rows==12) {
+  freq <- "monthly"
+} else {freq <- "could not determine"}
+```
+There are ``r ncol(hvac_df)`` column variables in this file with names like ``r names(hvac_df)[3]``, ``r names(hvac_df)[6]``, and ``r names(hvac_df)[50]``.
+
+The frequency of this .eso file's timestep is ``r freq``.
+
+### Time names for rows
+
+Named rows are helpful labels for a dataframe without 'being' data per se.
+
+```{r warning=FALSE}
+# probably just easier to do this in Excel
+eighty760_labels <- str_replace(hvac_df$`Date/Time`,"/\\d{4}","") # take out year
+rownames(hvac_df) <- eighty760_labels
+
+rownames(hvac_df) <- paste(hvac_df$`Date/Time`,"Ideal Tot. Clg Load [J]") # Add in variable name
+# rownames intact here
+```
+
+
+
+## Area to Zone mapping
+
+Load in an external data set of rows with two attributes: zone name and floor area in m^2.
+
+```{r message=FALSE, warning=FALSE}
+area_map <- read_csv("ZoneFloorArea-Map.csv")
+# rownames intact here
+```
+
+Since the zone-area dataset and the Ideal Air Loads dataset may have different order, create a simple indexing function.
+
+### Take out time
+```{r warning=FALSE}
+# drop Date/Time col
+time_col <- hvac_df[,1]
+rownames(time_col) <- rownames(hvac_df) # rownames lost here
+hvac_df <- hvac_df[,-1] # rownames here
+```
+
+
+### Inspect Zones and select only residential zones of interest
+
+Dwelling units, stairwells, and corridors above the first floor are all considered residential zones.
+
+```{r}
+res_list <- 
+c(
+grep("STAIRWELL_\\d", colnames(hvac_df), value = TRUE),
+grep("CORRIDOR_\\d", colnames(hvac_df), value = TRUE),  
+grep("BDRM", colnames(hvac_df), value = TRUE)
+)
+
+sorted_list <- stringr::str_sort(res_list, numeric = TRUE)
+
+hvac_df <- hvac_df[sorted_list]
+```
+
+
+### Normalize Loads by Floor Area
+
+```{r warning=FALSE}
+idx_s <- function(str) {
+  which(str==area_map$`Zone List`)
+  }
+# the following regex string means look for zone names
+# after 'Zone:' but before ' ' OR after 'MTRx - ' but before ' ELECTRICTY' 
+regex_str <- "(?<=Zone\\:).+(?=\\s)|(?<=\\s\\-\\s).*(?=\\sELECTRICITY)"
+slist <- str_extract(colnames(hvac_df), regex_str )
+# where did CORRIDOR_2 go?
+colnames(hvac_df) <- slist
+idx2 <- sapply(slist,idx_s)
+vec <- area_map$`Space Area [m2]`[idx2]
+
+# apply normalization vector across columns
+hvac_df <- sweep(hvac_df, 2, vec, FUN = "/") 
+
+# change colnames to reflect metric
+# **[J]** => [J/m^2]
+rownames(hvac_df) <- str_replace(rownames(hvac_df),"(?<=\\[)J{1}","J/m^2")
+rownames(hvac_df) <- paste(eighty760_labels, "Ideal Tot. Clg Load [J/m^2]")
+```
+
+
+### Add Date/Time back in
+
+```{r warning=FALSE}
+`Date/Time` <- time_col
+hvac_df <- cbind(`Date/Time`,hvac_df)
+```
+
+### Create columns for categorical month, day, hour, minute
+
+```{r warning=FALSE}
+# separate the date and time into cols month, day, hour, minute
+# make sure to have two digits for all days and months
+hvac_df <- hvac_df %>%
+  mutate(month = as.integer(substr(`Date/Time`, start = 1, stop = 2)),
+         day = as.integer(substr(`Date/Time`, start = 4, stop = 5)),
+         hour = as.integer(substr(`Date/Time`, start = 7, stop = 8)), # hour is not working
+         `Date/Time` = as.integer(substr(`Date/Time`, start = 10, stop = 11))) %>%
+  rename(minute = `Date/Time`)
+
+sorted_list <- stringr::str_sort(colnames(hvac_df), numeric = TRUE)
+
+hvac_df <- hvac_df[sorted_list]
+# numeric month var to month string
+# hvac_df <- transform(hvac_df, month = month.abb[month])
+
+```
+
+
+### Data QA/QC: remove observations with NA
+
+```{r}
+# remove NA observations
+# remove minute col if subhourly data DNE
+if (is.null(hvac_df$minute)) { # do nothing, check if exists
+  } else if (var(hvac_df$minute)==0) { # take out minute with zero variance
+  hvac_df <- select(hvac_df,-minute)} else { # do nothing
+  }
+
+if (anyNA(hvac_df)) { # then
+  hvac_df <- hvac_df %>% na.omit()
+}
+# remove the automatic row numbers
+# rownames(hvac_df) <- NULL
+```
+
+
+### Data QA/QC: zero variance
+
+```{r include=FALSE}
+
+sel_days_hvac_df <- hvac_df 
+
+# visdat::vis_cor(sel_days_hvac_df)
+#=> "the standard deviation is zero"
+
+# let's find which cols have zero variance
+zv <- which(apply(sel_days_hvac_df, 2, var) == 0)
+
+z_var_zones <- str_subset(colnames(sel_days_hvac_df)[zv],"")
+
+# get zones that str match with "cooling"
+c <- z_var_zones
+# get zones that str match with "heating"
+# h <- grep("*\\Deating", z_var_zones, value = TRUE)
+
+# extracts zone name logic
+# c <- str_extract(c,"(?<=SYSTEM\\s).*(?=\\:)")
+# h <- str_extract(h,"(?<=SYSTEM\\s).*(?=\\:)")
+
+# are there any zones with neither heating nor cooling?
+# intersect(c,h)
+#=> unconditioned zones
+
+# remove the unc zones from
+# `zero_var_zone_names` string list
+z_var_zone_names <- z_var_zones
+```
+
+The longer we work with this data set, the more clear it is that many zones have zero variance. We see that ``r length(z_var_zones)`` out of ``r length(sel_days_hvac_df)`` zones have zero variance for this temporal range.
+
+We find that there are ``r length(c)`` zones with no cooling load and `0` zones with no heating load. We assert that `r length(z_var_zones)` have neither cooling nor heating load. These zones are unconditioned spaces.
+
+Naturally, for a correctly defined building energy model, few if any hours of a certain zone will have both heating and cooling. For possible future regression purposes, I will treat heating load as negative cooling load.
+
+
+### Save as .Rda R data file
+
+```{r}
+hvac_dhw_novar <- hvac_df
+save(hvac_dhw_novar,file = "hvac_dhw_novar.Rda")
+```
+
+
+<br><br><br>

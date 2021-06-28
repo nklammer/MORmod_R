@@ -20,23 +20,22 @@ gc()
 
 # Import
 
-## ESO timeseries from "zemf_ilas_nodhw_eso"
+## ESO timeseries from "zemf_mini_erv_dhw_var_eso"
 
 ```{r import, message=FALSE, warning=FALSE}
 library(readr)
-ilas_df <- read_csv("data_in/zemf_ilas_nodhw_eso.csv", 
+hvac_df <- read_csv("data_in/zemf_mini_erv_dhw_var_eso.csv", 
     skip = 3)
-colnames(ilas_df)[1] <- "Date/Time"
-#View(ilas_df)
-
+colnames(hvac_df)[1] <- "Date/Time"
+#View(hvac_df)
 
 ```
 
 
 ```{r infer time sampling, include=FALSE}
-# readr::spec(ilas_df)
+# readr::spec(hvac_df)
 freq <- "null"
-rows <- nrow(ilas_df) 
+rows <- nrow(hvac_df) 
 if (rows==8760*4) {
   freq <- "15 minutes"
 } else if (rows==8760) {
@@ -45,7 +44,7 @@ if (rows==8760*4) {
   freq <- "monthly"
 } else {freq <- "could not determine"}
 ```
-There are ``r ncol(ilas_df)`` column variables in this file with names like ``r names(ilas_df)[3]``, ``r names(ilas_df)[6]``, and ``r names(ilas_df)[50]``.
+There are ``r ncol(hvac_df)`` column variables in this file with names like ``r names(hvac_df)[3]``, ``r names(hvac_df)[6]``, and ``r names(hvac_df)[50]``.
 
 The frequency of this .eso file's timestep is ``r freq``.
 
@@ -55,12 +54,14 @@ Named rows are helpful labels for a dataframe without 'being' data per se.
 
 ```{r warning=FALSE}
 # probably just easier to do this in Excel
-eighty760_labels <- str_replace(ilas_df$`Date/Time`,"/\\d{4}","") # take out year
-rownames(ilas_df) <- eighty760_labels
+eighty760_labels <- str_replace(hvac_df$`Date/Time`,"/\\d{4}","") # take out year
+rownames(hvac_df) <- eighty760_labels
 
-rownames(ilas_df) <- paste(ilas_df$`Date/Time`,"Ideal Tot. Clg Load [J]") # Add in variable name
+rownames(hvac_df) <- paste(hvac_df$`Date/Time`,"Ideal Tot. Clg Load [J]") # Add in variable name
 # rownames intact here
 ```
+
+
 
 ## Area to Zone mapping
 
@@ -73,31 +74,14 @@ area_map <- read_csv("ZoneFloorArea-Map.csv")
 
 Since the zone-area dataset and the Ideal Air Loads dataset may have different order, create a simple indexing function.
 
-### Normalize Loads by Floor Area
-
+### Take out time
 ```{r warning=FALSE}
 # drop Date/Time col
-time_col <- ilas_df[,1]
-rownames(time_col) <- rownames(ilas_df) # rownames lost here
-ilas_df <- ilas_df[,-1] # rownames here
-
-idx_s <- function(str) {
-  which(str==area_map$`Zone List`)
-  }
-# change regex
-slist <- str_extract(colnames(ilas_df),".+(?=\\sILAS|\\sIdeal)" ) # any char followed by ' ILAS' or ' Ideal'
-colnames(ilas_df) <- slist
-idx2 <- sapply(slist,idx_s)
-vec <- area_map$`Space Area [m2]`[idx2]
-
-# apply normalization vector across columns
-ilas_df <- sweep(ilas_df, 2, vec, FUN = "/") 
-
-# change colnames to reflect metric
-# **[J]** => [J/m^2]
-rownames(ilas_df) <- str_replace(rownames(ilas_df),"(?<=\\[)J{1}","J/m^2")
-rownames(ilas_df) <- paste(eighty760_labels, "Ideal Tot. Clg Load [J/m^2]")
+time_col <- hvac_df[,1]
+rownames(time_col) <- rownames(hvac_df) # rownames lost here
+hvac_df <- hvac_df[,-1] # rownames here
 ```
+
 
 ### Inspect Zones and select only residential zones of interest
 
@@ -106,21 +90,47 @@ Dwelling units, stairwells, and corridors above the first floor are all consider
 ```{r}
 res_list <- 
 c(
-grep("STAIRWELL_\\d", colnames(ilas_df), value = TRUE),
-grep("CORRIDOR_\\d", colnames(ilas_df), value = TRUE),  
-grep("BDRM", colnames(ilas_df), value = TRUE)
+grep("STAIRWELL_\\d", colnames(hvac_df), value = TRUE),
+grep("CORRIDOR_\\d", colnames(hvac_df), value = TRUE),  
+grep("BDRM", colnames(hvac_df), value = TRUE)
 )
 
 sorted_list <- stringr::str_sort(res_list, numeric = TRUE)
 
-ilas_df <- ilas_df[sorted_list]
+hvac_df <- hvac_df[sorted_list]
 ```
+
+
+### Normalize Loads by Floor Area
+
+```{r warning=FALSE}
+idx_s <- function(str) {
+  which(str==area_map$`Zone List`)
+  }
+# the following regex string means look for zone names
+# after 'Zone:' but before ' ' OR after 'MTRx - ' but before ' ELECTRICTY' 
+regex_str <- "(?<=Zone\\:).+(?=\\s)|(?<=\\s\\-\\s).*(?=\\sELECTRICITY)"
+slist <- str_extract(colnames(hvac_df), regex_str )
+# where did CORRIDOR_2 go?
+colnames(hvac_df) <- slist
+idx2 <- sapply(slist,idx_s)
+vec <- area_map$`Space Area [m2]`[idx2]
+
+# apply normalization vector across columns
+hvac_df <- sweep(hvac_df, 2, vec, FUN = "/") 
+
+# change colnames to reflect metric
+# **[J]** => [J/m^2]
+rownames(hvac_df) <- str_replace(rownames(hvac_df),"(?<=\\[)J{1}","J/m^2")
+rownames(hvac_df) <- paste(eighty760_labels, "Ideal Tot. Clg Load [J/m^2]")
+```
+
 
 ### Add Date/Time back in
 
 ```{r warning=FALSE}
 `Date/Time` <- time_col
-ilas_df <- cbind(`Date/Time`,ilas_df)
+hvac_df <- cbind(`Date/Time`,hvac_df)
 ```
 
 ### Create columns for categorical month, day, hour, minute
@@ -128,18 +138,18 @@ ilas_df <- cbind(`Date/Time`,ilas_df)
 ```{r warning=FALSE}
 # separate the date and time into cols month, day, hour, minute
 # make sure to have two digits for all days and months
-ilas_df <- ilas_df %>%
+hvac_df <- hvac_df %>%
   mutate(month = as.integer(substr(`Date/Time`, start = 1, stop = 2)),
          day = as.integer(substr(`Date/Time`, start = 4, stop = 5)),
          hour = as.integer(substr(`Date/Time`, start = 7, stop = 8)), # hour is not working
          `Date/Time` = as.integer(substr(`Date/Time`, start = 10, stop = 11))) %>%
   rename(minute = `Date/Time`)
 
-sorted_list <- stringr::str_sort(colnames(ilas_df), numeric = TRUE)
+sorted_list <- stringr::str_sort(colnames(hvac_df), numeric = TRUE)
 
-ilas_df <- ilas_df[sorted_list]
+hvac_df <- hvac_df[sorted_list]
 # numeric month var to month string
-# ilas_df <- transform(ilas_df, month = month.abb[month])
+# hvac_df <- transform(hvac_df, month = month.abb[month])
 
 ```
 
@@ -149,16 +159,16 @@ ilas_df <- ilas_df[sorted_list]
 ```{r}
 # remove NA observations
 # remove minute col if subhourly data DNE
-if (is.null(ilas_df$minute)) { # do nothing, check if exists
-  } else if (var(ilas_df$minute)==0) { # take out minute with zero variance
-  ilas_df <- select(ilas_df,-minute)} else { # do nothing
+if (is.null(hvac_df$minute)) { # do nothing, check if exists
+  } else if (var(hvac_df$minute)==0) { # take out minute with zero variance
+  hvac_df <- select(hvac_df,-minute)} else { # do nothing
   }
 
-if (anyNA(ilas_df)) { # then
-  ilas_df <- ilas_df %>% na.omit()
+if (anyNA(hvac_df)) { # then
+  hvac_df <- hvac_df %>% na.omit()
 }
 # remove the automatic row numbers
-# rownames(ilas_df) <- NULL
+# rownames(hvac_df) <- NULL
 ```
 
 
@@ -166,15 +176,15 @@ if (anyNA(ilas_df)) { # then
 
 ```{r include=FALSE}
 
-sel_days_ilas_df <- ilas_df 
+sel_days_hvac_df <- hvac_df 
 
-# visdat::vis_cor(sel_days_ilas_df)
+# visdat::vis_cor(sel_days_hvac_df)
 #=> "the standard deviation is zero"
 
 # let's find which cols have zero variance
-zv <- which(apply(sel_days_ilas_df, 2, var) == 0)
+zv <- which(apply(sel_days_hvac_df, 2, var) == 0)
 
-z_var_zones <- str_subset(colnames(sel_days_ilas_df)[zv],"")
+z_var_zones <- str_subset(colnames(sel_days_hvac_df)[zv],"")
 
 # get zones that str match with "cooling"
 c <- z_var_zones
@@ -194,7 +204,7 @@ c <- z_var_zones
 z_var_zone_names <- z_var_zones
 ```
 
-The longer we work with this data set, the more clear it is that many zones have zero variance. We see that ``r length(z_var_zones)`` out of ``r length(sel_days_ilas_df)`` zones have zero variance for this temporal range.
+The longer we work with this data set, the more clear it is that many zones have zero variance. We see that ``r length(z_var_zones)`` out of ``r length(sel_days_hvac_df)`` zones have zero variance for this temporal range.
 
 We find that there are ``r length(c)`` zones with no cooling load and `0` zones with no heating load. We assert that `r length(z_var_zones)` have neither cooling nor heating load. These zones are unconditioned spaces.
 
@@ -204,7 +214,8 @@ Naturally, for a correctly defined building energy model, few if any hours of a 
 ### Save as .Rda R data file
 
 ```{r}
-save(ilas_df,file = "ilas_nodhw.Rda")
+hvac_dhw_var <- hvac_df
+save(hvac_dhw_var,file = "hvac_dhw_var.Rda")
 ```
 
 

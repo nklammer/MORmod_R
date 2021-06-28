@@ -1,0 +1,131 @@
+---
+title: "Cluster and Analyze"
+author: "Noah Klammer"
+date: "4/27/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## Clear global env and report
+
+```{r include=FALSE}
+rm(list = ls())
+gc()
+```
+
+# Intro
+
+In this instance, I am using Zone Ideal Air Loads extracted from an EnergyPlus `in.idf` with the weather file `USA_CA_Los.Angeles.Intl.AP.722950_TMY3.ddy`. The Zone Ideal Load Air System ("ILAS") numerical `colnames` were `str_replace`d to match the `Name` field of the `Zone` object in the predecessor file `0_RVESO.Rmd`. Loads were normalized by zone floor area. That file also exported a R data file object `ILAS.Rda`. In this file `1_CLUS.Rmd` we will import both Ideal Load Air System data and weather data via the connector package `eplusr`. We will visualize this data for exploration. We will create report figures. We will attempt clustering of the ideal air loads for a subset of 8760 observations. Note that the nth observation in the `hour` variable corresponds to the average of the period from (n-1)th hour to nth hour.
+
+## Import EPW
+
+The R package `eplusr` contains useful functions and an `Epw` object for easily reading and writing weather data in the .epw file format.
+
+```{r include=FALSE}
+library(eplusr)
+epw <- eplusr::Epw$new("USA_CA_Los.Angeles.Intl.AP.722950_TMY3.epw")
+
+# good info
+epw$typical_extreme_period()
+paste0("The number of time intervals per hour is ",epw$interval(),".")
+paste(colnames(epw$data()), collapse = ", ") # get available variables here
+epw$data() %>%
+  select(month, day, hour, dry_bulb_temperature)
+```
+
+## Import Rda of Zone Ideal Loads Air System
+
+The responsible model for this data resides in the project folder `MORmod_mf/sddc_osw_multifamily/*/in/run`.
+
+```{r import, message=FALSE, warning=FALSE}
+load(file = "ilas_nodhw.Rda")
+```
+
+## Join building simulation results with weather input data
+
+```{r}
+db_temp <- epw$data()$dry_bulb_temperature # degC
+ilas_df <- cbind(db_temp,ilas_df)
+```
+
+
+
+# Visualizations 
+
+Under this section I have code that opens the `grDevices` connection and writes custom figures to bitmap files in the containing folder. The image outputs are shown below.
+
+### faceted ggplot for select 4 days
+
+```{r RUN FOR 4 IMAGE, eval=FALSE, include=FALSE}
+library(ggplot2)
+# Jan, Apr, Aug, Oct
+
+x <- sel_days_epw
+
+# set resolution
+png("4days.png", units = "in", width = 8, height = 5, res = 500)
+
+# have to tell aes that the variable is a discrete `factor`
+p <- ggplot(x, aes(x = hour, y = dry_bulb_temperature, color = factor(month))) + geom_smooth(se = F, span = 0.3)
+
+# new facet label names for month variable
+month.labs <- c("January 21","April 21","August 21","October 21")
+names(month.labs) <- months_of_interest
+
+p + facet_grid(rows = vars(month), labeller = labeller(month = month.labs)) + scale_color_discrete(name = "Month", labels = month.name[months_of_interest]) + scale_x_continuous(name = "Hour", breaks = c(1,6,12,18,24)) + theme_bw() + theme(legend.position = "none", axis.title.y = element_text(margin = margin(r=10))) + labs(y = "Dry Bulb Temperature (C)")
+
+dev.off()
+```
+
+Dry bulb temperature versus hour for four select days in the typical Los Angeles meteorological year: ![](images/4days.png)
+
+### faceted ggplot for 365 days
+
+```{r eval=FALSE, include=FALSE}
+# make unique day index 1..365
+d <- nrow(ilas_nodhw)/24
+d_ind <- rep(1:d, each = 24)
+
+# alternative 2 with iteration
+# c_vec <- vector(mode = "numeric", nrow(ilas_nodhw)) # instantiate
+# for (i in length(c_vec)) { # control flow
+#   if (logic) {i <<- i + 1} # iterator
+# }
+
+```
+
+
+```{r RUN FOR 365 IMAGE, eval=FALSE, include=FALSE}
+library(ggplot2)
+# Jan 31 days
+sel_days_epw <- cbind(d_ind, epw$data()) %>%
+  select(d_ind, month, day, hour, dry_bulb_temperature) %>%
+  filter(month %in% c(1:12))
+
+x <- sel_days_epw
+
+# set resolution
+png("365.png", units = "in", width = 8, height = 5, res = 500)
+
+# custom color palette named vector
+colorv <- rep( 
+  RColorBrewer::brewer.pal(8, name = "Dark2"),
+  length.out = 12)
+names(colorv) <- 1:12
+
+# have to tell aes that the variable is a discrete `factor`
+p <- ggplot(x, aes(x = hour, y = dry_bulb_temperature, color = factor(month))) + geom_smooth(se = F, span = 0.35)
+
+p + facet_wrap(~d_ind) + scale_color_manual(name = "Month", labels = month.abb, values = colorv) + scale_x_discrete(labels = NULL) + scale_y_discrete(labels = NULL) + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12))) + labs(x = NULL, y = "Drybulb temperature")
+
+dev.off()
+```
+
+Dry bulb temperature versus time of the full 365 days of the typical meteorological year for Los Angeles: ![](images/365.png)
+
+
+<br><br><br>
