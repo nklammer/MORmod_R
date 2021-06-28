@@ -131,6 +131,8 @@ rownames(hvac_df) <- paste(eighty760_labels, "Ideal Tot. Clg Load [J/m^2]")
 ```{r warning=FALSE}
 `Date/Time` <- time_col
 hvac_df <- cbind(`Date/Time`,hvac_df)
+rownames(hvac_df) <- paste(eighty760_labels, "Ideal Tot. Clg Load [J/m^2]")
+
 ```
 
 ### Create columns for categorical month, day, hour, minute
