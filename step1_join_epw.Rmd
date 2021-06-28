@@ -77,7 +77,7 @@ Under this section I have code that opens the `grDevices` connection and writes 
 
 #### ilas_nodhw
 
-```{r}
+```{r include=FALSE}
 db_temp <- epw$data()$dry_bulb_temperature # degC
 ilas_nodhw_db <- cbind(db_temp,ilas_nodhw)
 
@@ -101,13 +101,13 @@ for (col in 1:ncol(x)) {
   zones <- append(zones, rep(colnames(x)[col], times = 8760))
 }
 
-df <- data.frame(temp_db = as.double(db_list), values = as.double(values), zones = as.factor(zones))
+df <- data.frame(temp_db = as.double(db_list), ilas_nodhw_clg = as.double(values), zones = as.factor(zones))
 
 ```
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 # have to tell aes that the variable is a discrete `factor`
-p <- ggplot(df, aes(x = db_list, y = values, color = zones)) + geom_smooth(se = T, span = 0.35, show.legend = F) + xlim(8,25)
+p <- ggplot(df, aes(x = db_list, y = ilas_nodhw_clg, color = zones)) + geom_smooth(se = T, span = 0.35, show.legend = F) + scale_x_continuous() + coord_cartesian(xlim = quantile(df$db_list,c(0.1,0.9)))
 
 p + facet_wrap(~zones)
 
@@ -115,7 +115,7 @@ p + facet_wrap(~zones)
 
 #### ilas_dhw_novar
 
-```{r}
+```{r include=FALSE}
 db_temp <- epw$data()$dry_bulb_temperature # degC
 ilas_dhw_novar_db <- cbind(db_temp,ilas_dhw_novar)
 
@@ -139,21 +139,21 @@ for (col in 1:ncol(x)) {
   zones <- append(zones, rep(colnames(x)[col], times = 8760))
 }
 
-df <- data.frame(temp_db = as.double(db_list), values = as.double(values), zones = as.factor(zones))
+df <- data.frame(temp_db = as.double(db_list), ilas_dhw_novar_clg = as.double(values), zones = as.factor(zones))
 
 ```
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 # have to tell aes that the variable is a discrete `factor`
-p <- ggplot(df, aes(x = db_list, y = values, color = zones)) + geom_smooth(se = T, span = 0.35, show.legend = F) + xlim(10,21)
+p <- ggplot(df, aes(x = db_list, y = ilas_dhw_novar_clg, color = zones)) + geom_smooth(se = T, span = 0.35, show.legend = F) + scale_x_continuous() + coord_cartesian(xlim = quantile(df$db_list,c(0.1,0.9)))
 
 p + facet_wrap(~zones)
 
 ```
 
-#### ilas_dhw_novar
+#### hvac_dhw_novar
 
-```{r}
+```{r include=FALSE}
 db_temp <- epw$data()$dry_bulb_temperature # degC
 ilas_dhw_novar_db <- cbind(db_temp,ilas_dhw_novar)
 
@@ -177,21 +177,21 @@ for (col in 1:ncol(x)) {
   zones <- append(zones, rep(colnames(x)[col], times = 8760))
 }
 
-df <- data.frame(temp_db = as.double(db_list), values = as.double(values), zones = as.factor(zones))
+df <- data.frame(temp_db = as.double(db_list), hvac_dhw_novar = as.double(values), zones = as.factor(zones))
 
 ```
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 # have to tell aes that the variable is a discrete `factor`
-p <- ggplot(df, aes(x = db_list, y = values, color = zones)) + geom_smooth(se = T, span = 0.35, show.legend = F) + xlim(10,21)
+p <- ggplot(df, aes(x = db_list, y = hvac_dhw_novar, color = zones)) + geom_smooth(se = T, span = 0.35, show.legend = F) + scale_x_continuous() + coord_cartesian(xlim = quantile(df$db_list,c(0.1,0.9)))
 
 p + facet_wrap(~zones)
 
 ```
 
-#### ilas_dhw_novar
+#### hvac_dhw_var
 
-```{r}
+```{r include=FALSE}
 db_temp <- epw$data()$dry_bulb_temperature # degC
 ilas_dhw_novar_db <- cbind(db_temp,ilas_dhw_novar)
 
@@ -215,13 +215,13 @@ for (col in 1:ncol(x)) {
   zones <- append(zones, rep(colnames(x)[col], times = 8760))
 }
 
-df <- data.frame(temp_db = as.double(db_list), values = as.double(values), zones = as.factor(zones))
+df <- data.frame(temp_db = as.double(db_list), hvac_dhw_var = as.double(values), zones = as.factor(zones))
 
 ```
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 # have to tell aes that the variable is a discrete `factor`
-p <- ggplot(df, aes(x = db_list, y = values, color = zones)) + geom_smooth(se = T, span = 0.35, show.legend = F) + xlim(10,21)
+p <- ggplot(df, aes(x = db_list, y = hvac_dhw_var, color = zones)) + geom_smooth(se = T, span = 0.35, show.legend = F) + scale_x_continuous() + coord_cartesian(xlim = quantile(df$db_list,c(0.1,0.9)))
 
 p + facet_wrap(~zones)
 
