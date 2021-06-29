@@ -28,8 +28,6 @@ ilas_df <- read_csv("data_in/zemf_ilas_nodhw_eso.csv",
     skip = 3)
 colnames(ilas_df)[1] <- "Date/Time"
 #View(ilas_df)
-
-
 ```
 
 
@@ -45,11 +43,12 @@ if (rows==8760*4) {
   freq <- "monthly"
 } else {freq <- "could not determine"}
 ```
+
 There are ``r ncol(ilas_df)`` column variables in this file with names like ``r names(ilas_df)[3]``, ``r names(ilas_df)[6]``, and ``r names(ilas_df)[50]``.
 
 The frequency of this .eso file's timestep is ``r freq``.
 
-### Time names for rows
+### Rowname labels
 
 Named rows are helpful labels for a dataframe without 'being' data per se.
 
@@ -57,46 +56,57 @@ Named rows are helpful labels for a dataframe without 'being' data per se.
 # probably just easier to do this in Excel
 eighty760_labels <- str_replace(ilas_df$`Date/Time`,"/\\d{4}","") # take out year
 rownames(ilas_df) <- eighty760_labels
-
 rownames(ilas_df) <- paste(ilas_df$`Date/Time`,"Ideal Tot. Clg Load [J]") # Add in variable name
-# rownames intact here
 ```
+
+### Delete "Ideal Loads" chars from variables names
+
+```{r}
+# string replace colnames
+#stringr::str_view_all(colnames(ilas_df),"(\\sILA|\\sIdeal|\\sIDEAL).+$")
+# delete chars 'ILA*', 'Ideal*', or 'IDEAL*' where * is any character
+colnames(ilas_df) <- str_replace_all(colnames(ilas_df),"(\\sILA|\\sIdeal|\\sIDEAL).+$","")
+
+```
+
 
 ## Area to Zone mapping
 
-Load in an external data set of rows with two attributes: zone name and floor area in m^2.
+Load in an external data set of rows with two attributes: zone name and floor area in m^2. Since the zone-area dataset and the Ideal Air Loads dataset may have different order, create a simple indexing function.
 
-```{r message=FALSE, warning=FALSE}
-area_map <- read_csv("ZoneFloorArea-Map.csv")
-# rownames intact here
+### Drop Date/Time and save for later
+
+```{r}
+# drop Date/Time col
+time_col <- select(ilas_df, -c(`Date/Time`))
+rownames(time_col) <- rownames(ilas_df)
 ```
 
-Since the zone-area dataset and the Ideal Air Loads dataset may have different order, create a simple indexing function.
 
 ### Normalize Loads by Floor Area
 
 ```{r warning=FALSE}
-# drop Date/Time col
-time_col <- ilas_df[,1]
-rownames(time_col) <- rownames(ilas_df) # rownames lost here
-ilas_df <- ilas_df[,-1] # rownames here
+area_map <- read_csv("ZoneFloorArea-Map.csv")
 
-idx_s <- function(str) {
-  which(str==area_map$`Zone List`)
+
+# drop Date/Time col
+time_col <- select(ilas_df, c(`Date/Time`))
+rownames(time_col) <- rownames(ilas_df)
+ilas_df <- select(ilas_df, -c(`Date/Time`)) 
+
+idx_f <- function(string) { # takes zone string and maps to zone index in area_map
+  which(string==area_map$`Zone List`) # returns num vec
   }
-# change regex
-slist <- str_extract(colnames(ilas_df),".+(?=\\sILAS|\\sIdeal)" ) # any char followed by ' ILAS' or ' Ideal'
-colnames(ilas_df) <- slist
-idx2 <- sapply(slist,idx_s)
-vec <- area_map$`Space Area [m2]`[idx2]
+
+area_idx <- sapply(colnames(ilas_df),idx_f) # maps df idx to area idx
+area_vec <- area_map$`Space Area [m2]`[area_idx]
 
 # apply normalization vector across columns
-ilas_df <- sweep(ilas_df, 2, vec, FUN = "/") 
+ilas_df <- sweep(ilas_df, 2, area_vec, FUN = "/") 
 
-# change colnames to reflect metric
+# change units
 # **[J]** => [J/m^2]
 rownames(ilas_df) <- str_replace(rownames(ilas_df),"(?<=\\[)J{1}","J/m^2")
-rownames(ilas_df) <- paste(eighty760_labels, "Ideal Tot. Clg Load [J/m^2]")
 ```
 
 ### Inspect Zones and select only residential zones of interest
