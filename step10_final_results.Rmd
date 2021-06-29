@@ -1,0 +1,74 @@
+---
+title: "Final Results"
+author: "Noah Klammer"
+date: "6/28/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## Clear global env and report
+
+```{r include=FALSE}
+rm(list = ls())
+gc()
+```
+
+# Intro
+
+# Body
+
+### Downsample day, week, month
+
+```{r}
+load(file = "hvac_dhw_var.Rda")
+
+
+# downsample to day
+day_idx <- rep(1:365, each = 24)
+
+cbind(day_idx,hvac_dhw_var) %>%
+  group_by(day_idx) %>%
+  summarize(across(-c(day,hour,month),sum))
+
+# downsample to week
+week_idx <- rep(1:52, each = 7*24, length.out = 8760)
+cbind(week_idx,hvac_dhw_var) %>%
+  group_by(week_idx) %>%
+  summarize(across(-c(day,hour,month),sum))
+
+# downsample to month
+hvac_dhw_var %>%
+  group_by(month) %>%
+  summarize(across(-c(day,hour),sum))
+
+  
+```
+
+
+### Definitions of CV-RMSE and NMBE
+
+I am coding working backwards from results. For equations of CV-RMSE and NMBE see, Results chapter.
+
+```{r}
+cvrmse <- function(y_i, y_hat_i) {
+  sqrt(sum(((y_i - y_hat_i)^2))/(length(y_i)-1))/mean(y_i)
+}
+
+
+nmbe <- function(y_i, y_hat_i) {
+  sum(y_i-y_hat_i)/((length(y_i)-1)*mean(y_i))
+}
+
+```
+
+
+
+
+
+# End
+
+<br><br><br>
