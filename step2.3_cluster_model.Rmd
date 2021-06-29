@@ -35,7 +35,7 @@ load(file = "hvac_dhw_var.Rda")
 
 ```{r}
 # CHANGE DATA HERE
-df <- ilas_nodhw
+df <- hvac_dhw_novar
 ```
 
 # Feature normalization
@@ -142,8 +142,8 @@ rownames(red_df) <- str_replace(rownames(red_df),"J/m\\^2","J")
 red_df <- cbind(time_cols,red_df)
 
 ### Save out
-ilas_no_dhw_red <- red_df
-save(ilas_no_dhw_red, file = "ilas_no_dhw_red.Rda")
+hvac_dhw_novar_red <- red_df
+save(hvac_dhw_novar_red, file = "hvac_dhw_novar_red.Rda")
 ```
 
 # End
