@@ -153,8 +153,8 @@ rownames(red_df) <- str_replace(rownames(red_df),"J/m\\^2","J")
 red_df <- cbind(time_cols_receiver,red_df)
 
 ### Save out
-compare_A <- red_df
-save(compare_A, file = "compare_B.Rda")
+compare_B <- red_df
+save(compare_B, file = "compare_B.Rda")
 ```
 
 # End

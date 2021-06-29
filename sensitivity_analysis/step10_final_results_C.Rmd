@@ -1,0 +1,134 @@
+---
+title: "Final Results C case"
+author: "Noah Klammer"
+date: "6/28/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## Clear global env and report
+
+```{r include=FALSE}
+rm(list = ls())
+gc()
+```
+
+# Intro
+
+In this case C, I am comparing a reduced model with clustering basis in `hvac_dhw_novar`, with a full model `hvac_dhw_var`.
+
+## Import Rda data
+
+```{r import, message=FALSE, warning=FALSE}
+load(file = "hvac_dhw_var.Rda")
+load(file = "compare_C.Rda")
+
+```
+
+### Set data
+
+```{r}
+# CHANGE DATA HERE
+df <- hvac_dhw_var
+df_red <- compare_C
+```
+
+# Body
+
+### Sum across rows
+
+```{r}
+# maybe summarize verb across rows?
+
+df <- df %>%
+  replace(is.na(.), 0) %>%
+  mutate(rowsum = rowSums(.)) %>%
+  select(rowsum)
+
+df_red <- df_red %>%
+  replace(is.na(.), 0) %>%
+  mutate(rowsum = rowSums(.)) %>%
+  select(rowsum)
+
+hour_index <- seq(8760)
+red_rowsum <- df_red$rowsum
+df_com <- cbind(hour_index,df,red_rowsum) # comparison df
+
+```
+
+
+### Definitions of CV-RMSE and NMBE
+
+I am coding working backwards from results. For equations of CV-RMSE and NMBE see, Results chapter.
+
+```{r}
+cvrmse <- function(y_i, y_hat_i) {
+  sqrt(sum(((y_i - y_hat_i)^2))/(length(y_i)-1))/mean(y_i)
+}
+nmbe <- function(y_i, y_hat_i) {
+  sum(y_i-y_hat_i)/((length(y_i)-1)*mean(y_i))
+}
+```
+
+# Do stat calcs
+
+```{r}
+cvrmse(df_com$rowsum, df_com$red_rowsum)
+nmbe(df_com$rowsum, df_com$red_rowsum)
+sum(df_com$red_rowsum)/sum(df_com$rowsum)
+```
+
+## Plot the residuals
+
+```{r}
+plot(df_com$rowsum, df_com$red_rowsum, pch = 20, ylab="Energy use, reduced model (J)", xlab="Energy use, full model (J)", main="Reduced Model versus Full Model")
+abline(0,1, col = "red")
+
+```
+
+
+```{r}
+residuals = df_com$rowsum - df_com$red_rowsum
+
+hour_index <- seq(8760)
+#plot(hour_index, residuals, ylab="Residuals", xlab="Year hours", main="Reduced Model versus Full Model") 
+#abline(0, 0, col="red")
+
+qqnorm(residuals, frame = FALSE, main = "Normal Q-Q Plot of Residuals")
+qqline(residuals, col = "red")
+
+
+```
+
+
+# Downsample day, week, month
+
+```{r}
+# downsample to day
+day_idx <- rep(1:365, each = 24)
+
+cbind(day_idx,df) %>%
+  group_by(day_idx) %>%
+  summarize(across(-c(day,hour,month),sum))
+
+# downsample to week
+week_idx <- rep(1:52, each = 7*24, length.out = 8760)
+cbind(week_idx,df) %>%
+  group_by(week_idx) %>%
+  summarize(across(-c(day,hour,month),sum))
+
+# downsample to month
+df %>%
+  group_by(month) %>%
+  summarize(across(-c(day,hour),sum))
+
+  
+```
+
+# End
+
+<br><br><br>
