@@ -24,7 +24,7 @@ gc()
 
 ```{r import, message=FALSE, warning=FALSE}
 library(readr)
-df <- read_csv("data_in/zemf_mini_erv_dhw_var_eso.csv", 
+df <- read_csv("../data_in/zemf_mini_erv_dhw_var_eso.csv", 
     skip = 3)
 colnames(df)[1] <- "Date/Time"
 #View(df)

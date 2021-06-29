@@ -1,5 +1,5 @@
 ---
-title: "Cluster Model"
+title: "Cluster Model: Downsampling with hvac_dhw_var"
 author: "Noah Klammer"
 date: "6/28/2021"
 output: html_document
@@ -24,11 +24,7 @@ This is my thrid attempt at clustering of zones using the ideal air loads output
 ## Import Rda data
 
 ```{r import, message=FALSE, warning=FALSE}
-load(file = "ilas_nodhw.Rda")
-load(file = "ilas_dhw_novar.Rda")
-load(file = "hvac_dhw_novar.Rda")
 load(file = "hvac_dhw_var.Rda")
-
 ```
 
 ### Set data
@@ -36,6 +32,50 @@ load(file = "hvac_dhw_var.Rda")
 ```{r}
 # CHANGE DATA HERE
 df <- hvac_dhw_var
+```
+
+## Downsample day, week, month
+
+Here we can choose to downsample our temporal data from hour to `day`, `week`, or `month`.
+
+```{r}
+downsample <- TRUE
+sample_interval <- "month" # choices: "day", "week", "month
+
+if (downsample == TRUE) {
+  if (sample_interval == "day") {
+    # downsample to day
+    day_idx <- data.frame(day_idx = rep(1:365, each = 24))
+    rownames(day_idx) <- rownames(df)
+    df <- cbind(day_idx,df) %>%
+      group_by(day_idx) %>%
+      summarize(across(-c(day,hour,month),sum)) %>%
+      select(-c(day_idx))
+    hvac_dhw_var_day <- df
+    save(hvac_dhw_var_day, file = "hvac_dhw_var_day.Rda")
+  }
+  else if (sample_interval == "week") {
+  # downsample to week
+  week_idx <- data.frame(week_idx = rep(1:52, each = 7*24, length.out = 8760))
+  rownames(week_idx) <- rownames(df)
+  df <- cbind(week_idx,df) %>%
+    group_by(week_idx) %>%
+    summarize(across(-c(day,hour,month),sum)) %>%
+    select(-c(week_idx))
+  hvac_dhw_var_week <- df
+  save(hvac_dhw_var_week, file = "hvac_dhw_var_week.Rda")
+  }
+  else {
+  # downsample to month
+  df <- df %>%
+    group_by(month) %>%
+    summarize(across(-c(day,hour),sum)) %>%
+    select(-c(month))
+  hvac_dhw_var_month <- df
+  save(hvac_dhw_var_month, file = "hvac_dhw_var_month.Rda")
+  }
+}
+  
 ```
 
 # Feature normalization
@@ -48,15 +88,25 @@ Load in an external data set of rows with two attributes: zone name and floor ar
 
 ### Normalize Loads by Floor Area
 
-```{r warning=FALSE}
+```{r message=FALSE}
 
 ### Drop Date/Time and save for later
-time_cols <- select(df, c(hour,day,month))
-rownames(time_cols) <- rownames(df) # need to keep row labels
-df <- select(df, -c(hour,day,month)) 
+if ("hour" %in% colnames(df)) {
+  time_cols <- select(df, c(hour,day,month))
+  rownames(time_cols) <- rownames(df) # need to keep row labels
+  df <- select(df, -c(hour,day,month)) 
+} else if ("day" %in% colnames(df)) {
+  time_cols <- select(df, c(day,month))
+  rownames(time_cols) <- rownames(df) # need to keep row labels
+  df <- select(df, -c(day,month)) 
+} else if ("month" %in% colnames(df)) {
+  time_cols <- select(df, month)
+  rownames(time_cols) <- rownames(df)
+  df <- select(df, -month)
+} else {}
 
 ### Load Area Map
-area_map <- read_csv("ZoneFloorArea-Map.csv")
+area_map <- read_csv("../ZoneFloorArea-Map.csv")
 
 idx_f <- function(string) { # takes zone string and maps to zone index in area_map
   which(string==area_map$`Zone List`) # returns num vec
@@ -73,15 +123,17 @@ df <- sweep(df, 2, area_vec, FUN = "/")
 rownames(df) <- str_replace(rownames(df),"(?<=\\[)J{1}","J/m^2")
 
 ### Add Date/Time back in
+if (exists("time_cols")) {
 df <- cbind(time_cols,df)
+}
 ```
 
 
 # Clustering
 
-You might think that they would only be heating loads on the winter extreme day, but in this building type and climate, we find that there is more building cooling load [J] than heating load even during winter.
-
 Traditionally, we would remove columns with zero variance as they are unhelpful in the sense of regression. However, in clustering we may want to leave them in.
+
+
 
 ## Transpose and cluster
 
@@ -91,20 +143,19 @@ Let's introduce the `apcluster` package which is an implementation of Frey and D
 ```{r turnkey cluster process}
 library(apcluster)
 
-
 # drop time date cols in
 # preparation for clustering
 if ("minute" %in% colnames(df)) {
   df <- subset(df, select = -c(day, hour, month, minute))
-} else {
+} else if ("day" %in% colnames(df)) {
   df <- subset(df, select = -c(day, hour, month))
-}
+} else {}
 
 tdf <- as.data.frame(t(df))
 
 APR <- apcluster(negDistMat(r=2), tdf, details = TRUE) # returns a APResult
 
-area_map <- read_csv("ZoneFloorArea-Map.csv")
+area_map <- read_csv("../ZoneFloorArea-Map.csv")
 
 idx_f <- function(string) { # takes zone string and maps to zone index in area_map
   which(string==area_map$`Zone List`) # returns num vec
@@ -139,11 +190,25 @@ red_df <- sweep(red_df, 2, scalars, FUN = "*")
 rownames(red_df) <- str_replace(rownames(red_df),"J/m\\^2","J")
 
 ### Add Date/Time back in
+if (exists("time_cols")) {
 red_df <- cbind(time_cols,red_df)
+}
 
 ### Save out
-hvac_dhw_var_red <- red_df
-save(hvac_dhw_var_red, file = "hvac_dhw_var_red.Rda")
+if (sample_interval=="day") {
+  hvac_dhw_var_day_red <- red_df
+  save(hvac_dhw_var_day_red, file = "hvac_dhw_var_day_red.Rda")
+  print("The file 'hvac_dhw_var_day_red.Rda' was saved.")
+} else if (sample_interval=="week") {
+  hvac_dhw_var_week_red <- red_df
+  save(hvac_dhw_var_week_red, file = "hvac_dhw_var_week_red.Rda")
+  print("The file 'hvac_dhw_var_week_red.Rda' was saved.")
+} else if (sample_interval=="month") {
+  hvac_dhw_var_month_red <- red_df
+  save(hvac_dhw_var_month_red, file = "hvac_dhw_var_month_red.Rda")
+  print("The file 'hvac_dhw_var_month_red.Rda' was saved.")
+} else {print("No file was saved.")}
+
 ```
 
 # End

@@ -104,30 +104,6 @@ qqline(residuals, col = "red")
 ```
 
 
-# Downsample day, week, month
-
-```{r}
-# downsample to day
-day_idx <- rep(1:365, each = 24)
-
-cbind(day_idx,df) %>%
-  group_by(day_idx) %>%
-  summarize(across(-c(day,hour,month),sum))
-
-# downsample to week
-week_idx <- rep(1:52, each = 7*24, length.out = 8760)
-cbind(week_idx,df) %>%
-  group_by(week_idx) %>%
-  summarize(across(-c(day,hour,month),sum))
-
-# downsample to month
-df %>%
-  group_by(month) %>%
-  summarize(across(-c(day,hour),sum))
-
-  
-```
-
 # End
 
 <br><br><br>
