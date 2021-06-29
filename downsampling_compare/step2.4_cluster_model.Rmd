@@ -40,7 +40,7 @@ Here we can choose to downsample our temporal data from hour to `day`, `week`, o
 
 ```{r}
 downsample <- TRUE
-sample_interval <- "month" # choices: "day", "week", "month
+sample_interval <- "week" # choices: "day", "week", "month
 
 if (downsample == TRUE) {
   if (sample_interval == "day") {
@@ -154,6 +154,8 @@ if ("minute" %in% colnames(df)) {
 tdf <- as.data.frame(t(df))
 
 APR <- apcluster(negDistMat(r=2), tdf, details = TRUE) # returns a APResult
+
+print(paste("The number of clusters is", length(APR@clusters)))
 
 area_map <- read_csv("../ZoneFloorArea-Map.csv")
 

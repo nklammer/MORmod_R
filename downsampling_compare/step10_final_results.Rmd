@@ -23,8 +23,8 @@ gc()
 ## Import Rda data
 
 ```{r import, message=FALSE, warning=FALSE}
-load(file = "hvac_dhw_var.Rda")
-load(file = "hvac_dhw_var_red.Rda")
+load(file = "hvac_dhw_var_month.Rda")
+load(file = "hvac_dhw_var_month_red.Rda")
 
 ```
 
@@ -32,8 +32,8 @@ load(file = "hvac_dhw_var_red.Rda")
 
 ```{r}
 # CHANGE DATA HERE
-df <- hvac_dhw_var
-df_red <- hvac_dhw_var_red
+df <- hvac_dhw_var_month
+df_red <- hvac_dhw_var_month_red
 ```
 
 # Body
@@ -53,9 +53,9 @@ df_red <- df_red %>%
   mutate(rowsum = rowSums(.)) %>%
   select(rowsum)
 
-hour_index <- seq(8760)
+month_index <- seq(12)
 red_rowsum <- df_red$rowsum
-df_com <- cbind(hour_index,df,red_rowsum) # comparison df
+df_com <- cbind(month_index,df,red_rowsum) # comparison df
 
 ```
 
@@ -93,7 +93,7 @@ abline(0,1, col = "red")
 ```{r}
 residuals = df_com$rowsum - df_com$red_rowsum
 
-hour_index <- seq(8760)
+month_index <- seq(12)
 #plot(hour_index, residuals, ylab="Residuals", xlab="Year hours", main="Reduced Model versus Full Model") 
 #abline(0, 0, col="red")
 

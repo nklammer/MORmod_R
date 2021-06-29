@@ -23,6 +23,8 @@ This is my thrid attempt at clustering of zones using the ideal air loads output
 
 ## Import Rda data
 
+The column order is consistent between dataframes.
+
 ```{r import, message=FALSE, warning=FALSE}
 load(file = "ilas_nodhw.Rda")
 load(file = "ilas_dhw_novar.Rda")
@@ -35,7 +37,7 @@ load(file = "hvac_dhw_var.Rda")
 
 ```{r}
 # CHANGE DATA HERE
-df <- hvac_dhw_var
+df <- ilas_nodhw
 ```
 
 # Feature normalization
@@ -104,8 +106,6 @@ tdf <- as.data.frame(t(df))
 
 APR <- apcluster(negDistMat(r=2), tdf, details = TRUE) # returns a APResult
 
-print(paste("The number of cluster is",length(APR@clusters)))
-
 area_map <- read_csv("ZoneFloorArea-Map.csv")
 
 idx_f <- function(string) { # takes zone string and maps to zone index in area_map
@@ -144,8 +144,8 @@ rownames(red_df) <- str_replace(rownames(red_df),"J/m\\^2","J")
 red_df <- cbind(time_cols,red_df)
 
 ### Save out
-hvac_dhw_var_red <- red_df
-save(hvac_dhw_var_red, file = "hvac_dhw_var_red.Rda")
+ilas_no_dhw_red <- red_df
+save(ilas_no_dhw_red, file = "ilas_no_dhw_red.Rda")
 ```
 
 # End
