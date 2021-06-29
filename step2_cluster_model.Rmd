@@ -1,7 +1,7 @@
 ---
-title: "Cluster and Analyze 3"
+title: "Cluster Model"
 author: "Noah Klammer"
-date: "6/07/2021"
+date: "6/28/2021"
 output: html_document
 ---
 
@@ -21,20 +21,23 @@ gc()
 
 This is my thrid attempt at clustering of zones using the ideal air loads output variable. First I tried 3-space, then I  tried 364-space clustering. Confident in the speed of computation, I'm going to try all hours in the simulation year, 8760-space clustering.
 
-## Import Rda of Zone Ideal Loads Air System
+## Import Rda data
 
 ```{r import, message=FALSE, warning=FALSE}
-load(file = "ILAS.Rda")
+load(file = "ilas_nodhw.Rda")
+load(file = "ilas_dhw_novar.Rda")
+load(file = "hvac_dhw_novar.Rda")
+load(file = "hvac_dhw_var.Rda")
+
 ```
 
-### Select N hours to cluster in N-space
 
-Previously, based on the advice of Zahra Fallahi, I chose four select days on which to base my first trial of clustering. Based on the results from the first and subsequent second trial, I saw that even good intentions were not successful in preventing bias in the clustering. Given the computation speed, I will try the ideal air loads for all 8760 hours in the simulation year.
+# Feature normalization
+
+Normalize values by floor area of the respective zone.
 
 ```{r}
-# this is simple
-# no subset of full data
-sel_days_ILAS <- ILAS
+
 ```
 
 
@@ -44,49 +47,80 @@ You might think that they would only be heating loads on the winter extreme day,
 
 Traditionally, we would remove columns with zero variance as they are unhelpful in the sense of regression. However, in clustering we may want to leave them in.
 
-
-```{r}
-# drop time date cols in
-# preparation for clustering
-if ("minute" %in% colnames(sel_days_ILAS)) {
-  sel_days_ILAS <- subset(sel_days_ILAS, select = -c(day, hour, month, minute))
-} else {
-  sel_days_ILAS <- subset(sel_days_ILAS, select = -c(day, hour, month))
-}
-
-# transpose col variables to observation rows
-# a matrix-like object must have the same class for all cols
-# for a transpose
-# colnames(sel_days_ILAS)
-
-# t
-# need col names
-t <- as.data.frame(t(sel_days_ILAS))
-# not needed
-#colnames(t) <- sel_days_ILAS$hour
-
-# "the standard deviation is zero"?
-# visdat::vis_cor(sel_days_ILAS)
-
-```
-
-### Transpose and cluster
+## Transpose and cluster
 
 Let's introduce the `apcluster` package which is an implementation of Frey and Dueck's popular Affinity Propagation method for passing messages between pairs of data. I would make sure to reference the [math paper](https://doi.org/10.1080/19401493.2017.1410572), the [R package](https://doi.org/10.1093/bioinformatics/btr406), and the [original method's](https://doi.org/10.1126/science.1136800) publication.
 
 
-We'll keep all the thermal zones. We take only the subset of hours based on previous discussion.
+```{r turnkey data preprocess}
+# CHANGE DATA HERE
+df <- ilas_nodhw
+
+# drop time date cols in
+# preparation for clustering
+if ("minute" %in% colnames(df)) {
+  df <- subset(df, select = -c(day, hour, month, minute))
+} else {
+  df <- subset(df, select = -c(day, hour, month))
+}
+
+tdf <- as.data.frame(t(df))
+
+library(apcluster)
+APR <- apcluster(negDistMat(r=2), tdf, details = TRUE) # returns a APResult
+APR@clusters
+
+# first identify the exemplars
+APR@exemplars # returns named index
+tdf[APR@exemplars]
+
+APR@idx # returns the paired exemplar index
+
+area_map <- read_csv("ZoneFloorArea-Map.csv")
+
+idx_f <- function(string) { # takes zone string and maps to zone index in area_map
+  which(string==area_map$`Zone List`) # returns num vec
+  }
+
+# this creates the scalar vector
+# but does not apply the scalar on the df yet
+scalars <- vector(mode = "numeric")
+for (i in 1:length(APR@clusters)) { # iterate through each cluster
+  # get list of members of cluster i # char vec
+  member_zone_names <- names(unlist(APR@clusters[i])) # inclusive of exemplar
+  # map strings to m2 values # num vec
+  area_idx <- sapply(member_zone_names, idx_f) # maps cluster idx to area idx
+  # get floor area num values
+  member_area_num <- area_map$`Space Area [m2]`[area_idx] # num vec
+  # create scalar and append to num vec in order of clusters i
+  # sum area numbers
+  scalars <- append(scalars, sum(member_area_num))
+}
+
+# reduce dimensionality of 'df' using clusters
+red_df <- df[APR@exemplars] # returns 8760 rows with reduced columns
+
+# apply scalar vec from above to red_df
+# is the scalar of the right length?
+ncol(red_df) == length(scalars)
+
+# apply area scalars to reduced df
+red_df <- sweep(red_df, 2, scalars, FUN = "*")
+
+# change units
+rownames(red_df) <- str_replace(rownames(red_df),"J/m\\^2","J")
+
+
+
+```
+
+
 
 ```{r eval=TRUE, warning=FALSE, include=TRUE}
 library(apcluster)
 
 # transpose, observations are now parameters, vice versa
 a <- t
-
-# add chars to var names **Zone Cooling [J/m^2]**
-colnames(a) <- paste(colnames(a), "Zone Cooling Energy [J/m^2](Hourly)")
-# drop all chars but ZONE NAME from observations
-rownames(a) <- str_extract(rownames(a),"(?<=SYSTEM\\s).+(?=\\:)")
 
 # observations are zones, parameters are select hours
 apres1 <- apcluster::apcluster(negDistMat(r=2), a, details = TRUE)

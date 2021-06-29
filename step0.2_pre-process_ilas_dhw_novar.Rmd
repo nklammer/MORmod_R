@@ -128,6 +128,7 @@ rownames(ilas_df) <- paste(eighty760_labels, "Ideal Tot. Clg Load [J/m^2]")
 ```{r warning=FALSE}
 `Date/Time` <- time_col
 ilas_df <- cbind(`Date/Time`,ilas_df)
+rownames(ilas_df) <- paste(eighty760_labels, "Ideal Tot. Clg Load [J/m^2]")
 ```
 
 ### Create columns for categorical month, day, hour, minute

@@ -73,43 +73,67 @@ Under this section I have code that opens the `grDevices` connection and writes 
 
 ## Visualize regressive trends
 
+
+```{r Type Function, include=FALSE}
+# Define function for categorizing zones by "Apartment", "Stairs", and "Corridor".
+type_f <- function (zone_string) {
+  if (grepl("BDRM",zone_string)) {
+    return("Apartment")
+  }
+  else if (grepl("STAIR",zone_string)) {
+    return("Stairs")
+  }
+  else { # is corridor
+    return("Corridor")
+  }
+}
+```
+
+
 ### ggplot facet_wrap
 
 #### ilas_nodhw
 
 ```{r include=FALSE}
 db_temp <- epw$data()$dry_bulb_temperature # degC
-ilas_nodhw_db <- cbind(db_temp,ilas_nodhw)
+# SET PLOT DATA HERE
+df <- cbind(db_temp,ilas_nodhw)
 
 
 # how many zone variables?
-x <- ilas_nodhw_db %>%
-  select(-c(db_temp, day, hour, month)) %>%  select(c(1:10))
+x <- df %>%
+  select(-c(db_temp, day, hour, month))# %>%  select(c(1:20))
 
 num_var <- x %>% length() # 54 zone variables
 
 # create db_temp in length of 54 x 8760
-db_list <- rep(ilas_nodhw_db$db_temp, times = num_var)
+db_list <- rep(df$db_temp, times = num_var)
 db_list %>% length() == num_var*8760
 db_list[1+8760*0] == db_list[1+8760*4]
 
 # concatenate all variables except db_temp
 # use rbind() instead of append()
-values <- vector(mode = "numeric"); zones <- vector(mode = "character")
+values <- vector(mode = "numeric")
+zones <- vector(mode = "character")
+type <- vector(mode = "character")
+
+
 for (col in 1:ncol(x)) { 
   values <- append(values, x[,col])
   zones <- append(zones, rep(colnames(x)[col], times = 8760))
+  type <- append(type, rep(type_f(colnames(x)[col]), times = 8760))
 }
 
-df <- data.frame(temp_db = as.double(db_list), ilas_nodhw_clg = as.double(values), zones = as.factor(zones))
+df <- data.frame(db_temp = as.double(db_list), values = as.integer(values), zones = as.factor(zones), type = as.factor(type))
 
 ```
 
-```{r message=FALSE, warning=FALSE}
+```{r}
 # have to tell aes that the variable is a discrete `factor`
-p <- ggplot(df, aes(x = db_list, y = ilas_nodhw_clg, color = zones)) + geom_smooth(se = T, span = 0.35, show.legend = F) + scale_x_continuous() + coord_cartesian(xlim = quantile(df$db_list,c(0.1,0.9)))
+p <- ggplot(df, aes(x = db_temp, y = values, color = type)) + geom_smooth(se = T, method = "glm", show.legend = T) + coord_cartesian(xlim = c(14,20))
 
-p + facet_wrap(~zones)
+p + facet_wrap(~zones) + scale_x_continuous(limits = quantile(df$db_temp,c(0.25,0.75))) + labs(x = "Drybulb Temperature (C)", y = "Cooling Load per Area (J/m^2)") + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12)))
+
 
 ```
 
@@ -117,113 +141,155 @@ p + facet_wrap(~zones)
 
 ```{r include=FALSE}
 db_temp <- epw$data()$dry_bulb_temperature # degC
-ilas_dhw_novar_db <- cbind(db_temp,ilas_dhw_novar)
+# SET PLOT DATA HERE
+df <- cbind(db_temp,ilas_dhw_novar)
 
 
 # how many zone variables?
-x <- ilas_dhw_novar_db %>%
-  select(-c(db_temp, day, hour, month)) %>%  select(c(1:10))
+x <- df %>%
+  select(-c(db_temp, day, hour, month))# %>%  select(c(1:20))
 
 num_var <- x %>% length() # 54 zone variables
 
 # create db_temp in length of 54 x 8760
-db_list <- rep(ilas_dhw_novar_db$db_temp, times = num_var)
+db_list <- rep(df$db_temp, times = num_var)
 db_list %>% length() == num_var*8760
 db_list[1+8760*0] == db_list[1+8760*4]
 
 # concatenate all variables except db_temp
 # use rbind() instead of append()
-values <- vector(mode = "numeric"); zones <- vector(mode = "character")
+values <- vector(mode = "numeric")
+zones <- vector(mode = "character")
+type <- vector(mode = "character")
+
+
 for (col in 1:ncol(x)) { 
   values <- append(values, x[,col])
   zones <- append(zones, rep(colnames(x)[col], times = 8760))
+  type <- append(type, rep(type_f(colnames(x)[col]), times = 8760))
 }
 
-df <- data.frame(temp_db = as.double(db_list), ilas_dhw_novar_clg = as.double(values), zones = as.factor(zones))
+df <- data.frame(db_temp = as.double(db_list), values = as.integer(values), zones = as.factor(zones), type = as.factor(type))
 
 ```
 
-```{r message=FALSE, warning=FALSE}
+```{r}
 # have to tell aes that the variable is a discrete `factor`
-p <- ggplot(df, aes(x = db_list, y = ilas_dhw_novar_clg, color = zones)) + geom_smooth(se = T, span = 0.35, show.legend = F) + scale_x_continuous() + coord_cartesian(xlim = quantile(df$db_list,c(0.1,0.9)))
+p <- ggplot(df, aes(x = db_temp, y = values, color = type)) + geom_smooth(se = T, method = "glm", show.legend = T) + coord_cartesian(xlim = c(14,20))
 
-p + facet_wrap(~zones)
+p + facet_wrap(~zones) + scale_x_continuous(limits = quantile(df$db_temp,c(0.25,0.75))) + labs(x = "Drybulb Temperature (C)", y = "Cooling Load per Area (J/m^2)") + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12)))
+
 
 ```
+
 
 #### hvac_dhw_novar
 
+Try and jitter the data in Corridors and Stairs.
+
+```{r}
+hvac_dhw_novar$CORRIDOR_2 <- jitter(hvac_dhw_novar$CORRIDOR_2)
+hvac_dhw_novar$CORRIDOR_3 <- jitter(hvac_dhw_novar$CORRIDOR_3)
+hvac_dhw_novar$CORRIDOR_4 <- jitter(hvac_dhw_novar$CORRIDOR_4)
+hvac_dhw_novar$STAIRWELL_1_2 <- jitter(hvac_dhw_novar$STAIRWELL_1_2)
+hvac_dhw_novar$STAIRWELL_2_2 <- jitter(hvac_dhw_novar$STAIRWELL_2_2)
+STAIRWELL_1_3 <- jitter(hvac_dhw_novar$STAIRWELL_1_3)
+STAIRWELL_2_3 <- jitter(hvac_dhw_novar$STAIRWELL_2_3)
+STAIRWELL_1_4 <- jitter(hvac_dhw_novar$STAIRWELL_1_4)
+hvac_dhw_novar$STAIRWELL_2_4 <- jitter(hvac_dhw_novar$STAIRWELL_2_4)
+
+
+```
+
+
 ```{r include=FALSE}
 db_temp <- epw$data()$dry_bulb_temperature # degC
-ilas_dhw_novar_db <- cbind(db_temp,ilas_dhw_novar)
+# SET PLOT DATA HERE
+df <- cbind(db_temp, hvac_dhw_novar)
 
 
 # how many zone variables?
-x <- ilas_dhw_novar_db %>%
-  select(-c(db_temp, day, hour, month)) %>%  select(c(1:10))
+x <- df %>%
+  select(-c(db_temp, day, hour, month))# %>%  select(c(1:20))
 
 num_var <- x %>% length() # 54 zone variables
 
 # create db_temp in length of 54 x 8760
-db_list <- rep(ilas_dhw_novar_db$db_temp, times = num_var)
+db_list <- rep(df$db_temp, times = num_var)
 db_list %>% length() == num_var*8760
 db_list[1+8760*0] == db_list[1+8760*4]
 
 # concatenate all variables except db_temp
 # use rbind() instead of append()
-values <- vector(mode = "numeric"); zones <- vector(mode = "character")
+values <- vector(mode = "numeric")
+zones <- vector(mode = "character")
+type <- vector(mode = "character")
+
+
 for (col in 1:ncol(x)) { 
   values <- append(values, x[,col])
   zones <- append(zones, rep(colnames(x)[col], times = 8760))
+  type <- append(type, rep(type_f(colnames(x)[col]), times = 8760))
 }
 
-df <- data.frame(temp_db = as.double(db_list), hvac_dhw_novar = as.double(values), zones = as.factor(zones))
+df <- data.frame(db_temp = as.double(db_list), values = as.integer(values), zones = as.factor(zones), type = as.factor(type))
 
 ```
 
-```{r message=FALSE, warning=FALSE}
+```{r}
 # have to tell aes that the variable is a discrete `factor`
-p <- ggplot(df, aes(x = db_list, y = hvac_dhw_novar, color = zones)) + geom_smooth(se = T, span = 0.35, show.legend = F) + scale_x_continuous() + coord_cartesian(xlim = quantile(df$db_list,c(0.1,0.9)))
+p <- ggplot(df, aes(x = db_temp, y = values, color = type)) + geom_smooth(se = T, method = "glm", show.legend = T) + coord_cartesian(xlim = c(14,20))
 
-p + facet_wrap(~zones)
+p + facet_wrap(~zones) + scale_x_continuous(limits = quantile(df$db_temp,c(0.25,0.75))) + labs(x = "Drybulb Temperature (C)", y = "Energy Use per Area (J/m^2)") + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12)))
+
 
 ```
+
+
 
 #### hvac_dhw_var
 
+
 ```{r include=FALSE}
 db_temp <- epw$data()$dry_bulb_temperature # degC
-ilas_dhw_novar_db <- cbind(db_temp,ilas_dhw_novar)
+# SET PLOT DATA HERE
+df <- cbind(db_temp,hvac_dhw_var)
 
 
 # how many zone variables?
-x <- ilas_dhw_novar_db %>%
-  select(-c(db_temp, day, hour, month)) %>%  select(c(1:10))
+x <- df %>%
+  select(-c(db_temp, day, hour, month)) #%>%  select(c(1,48,54))
 
 num_var <- x %>% length() # 54 zone variables
 
 # create db_temp in length of 54 x 8760
-db_list <- rep(ilas_dhw_novar_db$db_temp, times = num_var)
+db_list <- rep(df$db_temp, times = num_var)
 db_list %>% length() == num_var*8760
 db_list[1+8760*0] == db_list[1+8760*4]
 
 # concatenate all variables except db_temp
 # use rbind() instead of append()
-values <- vector(mode = "numeric"); zones <- vector(mode = "character")
+values <- vector(mode = "numeric")
+zones <- vector(mode = "character")
+type <- vector(mode = "character")
+
+
 for (col in 1:ncol(x)) { 
   values <- append(values, x[,col])
   zones <- append(zones, rep(colnames(x)[col], times = 8760))
+  type <- append(type, rep(type_f(colnames(x)[col]), times = 8760))
 }
 
-df <- data.frame(temp_db = as.double(db_list), hvac_dhw_var = as.double(values), zones = as.factor(zones))
+df <- data.frame(db_temp = as.double(db_list), values = as.integer(values), zones = as.factor(zones), type = as.factor(type))
 
 ```
 
-```{r message=FALSE, warning=FALSE}
+```{r}
 # have to tell aes that the variable is a discrete `factor`
-p <- ggplot(df, aes(x = db_list, y = hvac_dhw_var, color = zones)) + geom_smooth(se = T, span = 0.35, show.legend = F) + scale_x_continuous() + coord_cartesian(xlim = quantile(df$db_list,c(0.1,0.9)))
+p <- ggplot(df, aes(x = db_temp, y = values, color = type)) + geom_smooth(se = T, method = "glm", show.legend = T) + coord_cartesian(xlim = c(14,20))
 
-p + facet_wrap(~zones)
+p + facet_wrap(~zones) + scale_x_continuous(limits = quantile(df$db_temp,c(0.25,0.75))) + labs(x = "Drybulb Temperature (C)", y = "Energy Use per Area (J/m^2)") + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12)))
+
 
 ```
 
