@@ -31,13 +31,51 @@ load(file = "hvac_dhw_var.Rda")
 
 ```
 
+### Set data
+
+```{r}
+# CHANGE DATA HERE
+df <- ilas_nodhw
+```
 
 # Feature normalization
 
 Normalize values by floor area of the respective zone.
 
-```{r}
+## Area to Zone mapping
 
+Load in an external data set of rows with two attributes: zone name and floor area in m^2. Since the zone-area dataset and the Ideal Air Loads dataset may have different order, create a simple indexing function.
+
+### Normalize Loads by Floor Area
+
+```{r warning=FALSE}
+
+### Drop Date/Time and save for later
+time_cols <- select(df, c(hour,day,month))
+rownames(time_cols) <- rownames(df) # need to keep row labels
+df <- select(df, -c(hour,day,month)) 
+
+
+### Load Area Map
+area_map <- read_csv("ZoneFloorArea-Map.csv")
+
+
+idx_f <- function(string) { # takes zone string and maps to zone index in area_map
+  which(string==area_map$`Zone List`) # returns num vec
+  }
+
+area_idx <- sapply(colnames(df),idx_f) # maps df idx to area idx
+area_vec <- area_map$`Space Area [m2]`[area_idx]
+
+# apply normalization vector across columns
+df <- sweep(df, 2, area_vec, FUN = "/") 
+
+# change units
+# **[J]** => [J/m^2]
+rownames(df) <- str_replace(rownames(df),"(?<=\\[)J{1}","J/m^2")
+
+### Add Date/Time back in
+df <- cbind(time_cols,df)
 ```
 
 
@@ -52,9 +90,9 @@ Traditionally, we would remove columns with zero variance as they are unhelpful 
 Let's introduce the `apcluster` package which is an implementation of Frey and Dueck's popular Affinity Propagation method for passing messages between pairs of data. I would make sure to reference the [math paper](https://doi.org/10.1080/19401493.2017.1410572), the [R package](https://doi.org/10.1093/bioinformatics/btr406), and the [original method's](https://doi.org/10.1126/science.1136800) publication.
 
 
-```{r turnkey data preprocess}
-# CHANGE DATA HERE
-df <- ilas_nodhw
+```{r turnkey cluster process}
+library(apcluster)
+
 
 # drop time date cols in
 # preparation for clustering
@@ -66,15 +104,7 @@ if ("minute" %in% colnames(df)) {
 
 tdf <- as.data.frame(t(df))
 
-library(apcluster)
 APR <- apcluster(negDistMat(r=2), tdf, details = TRUE) # returns a APResult
-APR@clusters
-
-# first identify the exemplars
-APR@exemplars # returns named index
-tdf[APR@exemplars]
-
-APR@idx # returns the paired exemplar index
 
 area_map <- read_csv("ZoneFloorArea-Map.csv")
 
@@ -110,8 +140,8 @@ red_df <- sweep(red_df, 2, scalars, FUN = "*")
 # change units
 rownames(red_df) <- str_replace(rownames(red_df),"J/m\\^2","J")
 
-
-
+### Add Date/Time back in
+red_df <- cbind(time_cols,red_df)
 ```
 
 

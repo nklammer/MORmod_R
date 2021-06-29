@@ -69,49 +69,17 @@ colnames(ilas_df) <- str_replace_all(colnames(ilas_df),"(\\sILA|\\sIdeal|\\sIDEA
 
 ```
 
+# Inspect Zones and select only residential zones of interest
 
-## Area to Zone mapping
-
-Load in an external data set of rows with two attributes: zone name and floor area in m^2. Since the zone-area dataset and the Ideal Air Loads dataset may have different order, create a simple indexing function.
+Dwelling units, stairwells, and corridors above the first floor are all considered residential zones.
 
 ### Drop Date/Time and save for later
 
 ```{r}
 # drop Date/Time col
-time_col <- select(ilas_df, -c(`Date/Time`))
-rownames(time_col) <- rownames(ilas_df)
-```
-
-
-### Normalize Loads by Floor Area
-
-```{r warning=FALSE}
-area_map <- read_csv("ZoneFloorArea-Map.csv")
-
-
-# drop Date/Time col
 time_col <- select(ilas_df, c(`Date/Time`))
 rownames(time_col) <- rownames(ilas_df)
-ilas_df <- select(ilas_df, -c(`Date/Time`)) 
-
-idx_f <- function(string) { # takes zone string and maps to zone index in area_map
-  which(string==area_map$`Zone List`) # returns num vec
-  }
-
-area_idx <- sapply(colnames(ilas_df),idx_f) # maps df idx to area idx
-area_vec <- area_map$`Space Area [m2]`[area_idx]
-
-# apply normalization vector across columns
-ilas_df <- sweep(ilas_df, 2, area_vec, FUN = "/") 
-
-# change units
-# **[J]** => [J/m^2]
-rownames(ilas_df) <- str_replace(rownames(ilas_df),"(?<=\\[)J{1}","J/m^2")
 ```
-
-### Inspect Zones and select only residential zones of interest
-
-Dwelling units, stairwells, and corridors above the first floor are all considered residential zones.
 
 ```{r}
 res_list <- 
@@ -131,7 +99,7 @@ ilas_df <- ilas_df[sorted_list]
 ```{r warning=FALSE}
 `Date/Time` <- time_col
 ilas_df <- cbind(`Date/Time`,ilas_df)
-rownames(ilas_df) <- paste(eighty760_labels, "Ideal Tot. Clg Load [J/m^2]")
+#rownames(ilas_df) <- paste(eighty760_labels, "Ideal Tot. Clg Load [J/m^2]")
 ```
 
 ### Create columns for categorical month, day, hour, minute
