@@ -19,7 +19,7 @@ gc()
 
 # Intro
 
-In this instance, I am using Zone Ideal Air Loads extracted from an EnergyPlus `in.idf` with the weather file `USA_CA_Los.Angeles.Intl.AP.722950_TMY3.ddy`. The Zone Ideal Load Air System ("ILAS") numerical `colnames` were `str_replace`d to match the `Name` field of the `Zone` object in the predecessor file `0_RVESO.Rmd`. Loads were normalized by zone floor area. In this file we will import both Ideal Load Air System data and weather data via the connector package `eplusr`. We will visualize this data for exploration. We will create report figures. We will attempt clustering of the ideal air loads for a subset of 8760 observations. Note that the nth observation in the `hour` variable corresponds to the average of the period from (n-1)th hour to nth hour.
+In this instance, I am using Zone Ideal Air Loads extracted from an EnergyPlus `in.idf` with the weather file `USA_CA_Los.Angeles.Intl.AP.722950_TMY3.ddy`. The Zone Ideal Load Air System ("ILAS") numerical `colnames` were `str_replace`d to match the `Name` field of the `Zone` object in the predecesor file `0_RVESO.Rmd`. Loads were normalized by zone floor area. In this file we will import both Ideal Load Air System data and weather data via the connector package `eplusr`. We will visualize this data for exploration. We will create report figures. We will attempt clustering of the ideal air loads for a subset of 8760 observations. Note that the nth observation in the `hour` variable corresponds to the average of the period from (n-1)th hour to nth hour.
 
 ## Import EPW
 
@@ -90,16 +90,30 @@ type_f <- function (zone_string) {
 ```
 
 
-### ggplot facet_wrap
 
-#### ilas_nodhw
 
 ```{r include=FALSE}
 db_temp <- epw$data()$dry_bulb_temperature # degC
 # SET PLOT DATA HERE
 df <- cbind(db_temp,ilas_nodhw)
+```
+
+```{r message=FALSE}
+df_gg <- cbind(db_temp, ilas_nodhw)
+ggplot(df_gg, aes(x=db_temp,y=`0_BDRM_1_3`)) + geom_jitter(width = 0.6, height = 0, alpha = 1/20) + geom_smooth(se=F) + theme_classic(base_size = 16) + scale_y_continuous("Ideal Air Loads Cooling (J)") +  scale_x_continuous("Drybulb Temperature (°C)") + ggtitle("Studio Bedroom 1, Third Floor")
+```
 
 
+```{r message=FALSE}
+df_gg <- cbind(db_temp, hvac_dhw_var)
+ggplot(df_gg, aes(x=db_temp, y=`0_BDRM_1_3`)) + geom_jitter(width = 0.6, height = 0, alpha = 1/20) + geom_smooth(se=F) + theme_classic(base_size = 16) + scale_y_continuous("Energy Use (J)",labels = scales::scientific_format()) + scale_x_continuous("Drybulb Temperature (°C)") + ggtitle("Studio Bedroom 1, Third Floor")
+```
+
+### ggplot facet_wrap
+
+#### ilas_nodhw
+
+```{r include=FALSE}
 # how many zone variables?
 x <- df %>%
   select(-c(db_temp, day, hour, month))# %>%  select(c(1:20))
@@ -128,13 +142,15 @@ df <- data.frame(db_temp = as.double(db_list), values = as.integer(values), zone
 
 ```
 
-```{r}
+```{r message=FALSE, warning=FALSE}
+
+#png(filename = "multi_smooth_ilas_nodhw.png", height = 480, width = 950, units = "px")
 # have to tell aes that the variable is a discrete `factor`
-p <- ggplot(df, aes(x = db_temp, y = values, color = type)) + geom_smooth(se = T, method = "glm", show.legend = T) + coord_cartesian(xlim = c(14,20))
+p <- ggplot(df, aes(x = db_temp, y = values, color = type)) + geom_smooth(se = T, method = "gam", show.legend = T) + coord_cartesian(xlim = c(14,20))
 
-p + facet_wrap(~zones) + scale_x_continuous(limits = quantile(df$db_temp,c(0.25,0.75))) + labs(x = "Drybulb Temperature (C)", y = "Cooling Load per Area (J/m^2)") + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12)))
+p + facet_wrap(~zones) + scale_x_continuous(limits = quantile(df$db_temp,c(0.25,0.75))) + labs(x = "Drybulb Temperature (°C)", y = "Cooling Load per Area (J/m^2)") + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12))) 
 
-
+#dev.off()
 ```
 
 #### ilas_dhw_novar
@@ -177,7 +193,7 @@ df <- data.frame(db_temp = as.double(db_list), values = as.integer(values), zone
 # have to tell aes that the variable is a discrete `factor`
 p <- ggplot(df, aes(x = db_temp, y = values, color = type)) + geom_smooth(se = T, method = "glm", show.legend = T) + coord_cartesian(xlim = c(14,20))
 
-p + facet_wrap(~zones) + scale_x_continuous(limits = quantile(df$db_temp,c(0.25,0.75))) + labs(x = "Drybulb Temperature (C)", y = "Cooling Load per Area (J/m^2)") + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12)))
+p + facet_wrap(~zones) + scale_x_continuous(limits = quantile(df$db_temp,c(0.25,0.75))) + labs(x = "Drybulb Temperature (°C)", y = "Cooling Load per Area (J/m^2)") + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12)))
 
 
 ```
@@ -240,7 +256,7 @@ df <- data.frame(db_temp = as.double(db_list), values = as.integer(values), zone
 # have to tell aes that the variable is a discrete `factor`
 p <- ggplot(df, aes(x = db_temp, y = values, color = type)) + geom_smooth(se = T, method = "glm", show.legend = T) + coord_cartesian(xlim = c(14,20))
 
-p + facet_wrap(~zones) + scale_x_continuous(limits = quantile(df$db_temp,c(0.25,0.75))) + labs(x = "Drybulb Temperature (C)", y = "Energy Use per Area (J/m^2)") + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12)))
+p + facet_wrap(~zones) + scale_x_continuous(limits = quantile(df$db_temp,c(0.25,0.75))) + labs(x = "Drybulb Temperature (°C)", y = "Energy Use per Area (J/m^2)") + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12)))
 
 
 ```
@@ -288,7 +304,7 @@ df <- data.frame(db_temp = as.double(db_list), values = as.integer(values), zone
 # have to tell aes that the variable is a discrete `factor`
 p <- ggplot(df, aes(x = db_temp, y = values, color = type)) + geom_smooth(se = T, method = "glm", show.legend = T) + coord_cartesian(xlim = c(14,20))
 
-p + facet_wrap(~zones) + scale_x_continuous(limits = quantile(df$db_temp,c(0.25,0.75))) + labs(x = "Drybulb Temperature (C)", y = "Energy Use per Area (J/m^2)") + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12)))
+p + facet_wrap(~zones) + scale_x_continuous(limits = quantile(df$db_temp,c(0.25,0.75))) + labs(x = "Drybulb Temperature (°C)", y = "Energy Use per Area (J/m^2)") + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12)))
 
 
 ```
@@ -312,7 +328,7 @@ p <- ggplot(x, aes(x = hour, y = dry_bulb_temperature, color = factor(month))) +
 month.labs <- c("January 21","April 21","August 21","October 21")
 names(month.labs) <- months_of_interest
 
-p + facet_grid(rows = vars(month), labeller = labeller(month = month.labs)) + scale_color_discrete(name = "Month", labels = month.name[months_of_interest]) + scale_x_continuous(name = "Hour", breaks = c(1,6,12,18,24)) + theme_bw() + theme(legend.position = "none", axis.title.y = element_text(margin = margin(r=10))) + labs(y = "Dry Bulb Temperature (C)")
+p + facet_grid(rows = vars(month), labeller = labeller(month = month.labs)) + scale_color_discrete(name = "Month", labels = month.name[months_of_interest]) + scale_x_continuous(name = "Hour", breaks = c(1,6,12,18,24)) + theme_bw() + theme(legend.position = "none", axis.title.y = element_text(margin = margin(r=10))) + labs(y = "Dry Bulb Temperature (°C)")
 
 dev.off()
 ```
