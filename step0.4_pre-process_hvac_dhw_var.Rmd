@@ -89,8 +89,8 @@ rownames(time_col) <- rownames(df)
 ```{r}
 res_list <- 
 c(
-grep("STAIRWELL_\\d", colnames(df), value = TRUE),
-grep("CORRIDOR_\\d", colnames(df), value = TRUE),  
+# grep("STAIRWELL_\\d", colnames(df), value = TRUE),
+# grep("CORRIDOR_\\d", colnames(df), value = TRUE),  
 grep("BDRM", colnames(df), value = TRUE)
 )
 
