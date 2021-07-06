@@ -1,0 +1,383 @@
+---
+title: "Cluster and Analyze"
+author: "Noah Klammer"
+date: "4/27/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## Clear global env and report
+
+```{r include=FALSE}
+rm(list = ls())
+gc()
+```
+
+# Intro
+
+In this instance, I am using Zone Ideal Air Loads extracted from an EnergyPlus `in.idf` with the weather file `USA_CA_Los.Angeles.Intl.AP.722950_TMY3.ddy`. The Zone Ideal Load Air System ("ILAS") numerical `colnames` were `str_replace`d to match the `Name` field of the `Zone` object in the predecesor file `0_RVESO.Rmd`. Loads were normalized by zone floor area. In this file we will import both Ideal Load Air System data and weather data via the connector package `eplusr`. We will visualize this data for exploration. We will create report figures. We will attempt clustering of the ideal air loads for a subset of 8760 observations. Note that the nth observation in the `hour` variable corresponds to the average of the period from (n-1)th hour to nth hour.
+
+## Import EPW
+
+The R package `eplusr` contains useful functions and an `Epw` object for easily reading and writing weather data in the .epw file format.
+
+```{r include=FALSE}
+library(eplusr)
+epw <- eplusr::Epw$new("USA_CA_Los.Angeles.Intl.AP.722950_TMY3.epw")
+
+# good info
+epw$typical_extreme_period()
+paste0("The number of time intervals per hour is ",epw$interval(),".")
+paste(colnames(epw$data()), collapse = ", ") # get available variables here
+epw$data() %>%
+  select(month, day, hour, dry_bulb_temperature)
+```
+
+## Import data in Rda form
+
+The responsible model for this data resides in the project folder `MORmod_mf/osw_mf_thesis/*/run`.
+
+```{r import, message=FALSE, warning=FALSE}
+load(file = "ilas_nodhw.Rda")     # ilas_nodhw
+load(file = "ilas_dhw_novar.Rda") # ilas_dhw_novar
+load(file = "hvac_dhw_novar.Rda") # hvac_dhw_novar
+load(file = "hvac_dhw_var.Rda")   # hvac_dhw_var
+
+```
+
+### Check that column names match
+
+```{r}
+uniq <- unique(
+c(
+  colnames(ilas_nodhw),
+  colnames(ilas_dhw_novar),
+  colnames(hvac_dhw_novar),
+  colnames(hvac_dhw_var)
+))
+
+all(uniq %in% colnames(ilas_nodhw))
+all(uniq %in% colnames(ilas_dhw_novar))
+all(uniq %in% colnames(hvac_dhw_novar))
+all(uniq %in% colnames(hvac_dhw_var))
+
+```
+
+# Visualizations
+
+Under this section I have code that opens the `grDevices` connection and writes custom figures to bitmap files in the containing folder. The image outputs are shown below.
+
+## Visualize regressive trends
+
+
+```{r Type Function, include=FALSE}
+# Define function for categorizing zones by "Apartment", "Stairs", and "Corridor".
+type_f <- function (zone_string) {
+  if (grepl("BDRM",zone_string)) {
+    return("Apartment")
+  }
+  else if (grepl("STAIR",zone_string)) {
+    return("Stairs")
+  }
+  else { # is corridor
+    return("Corridor")
+  }
+}
+```
+
+
+
+
+```{r include=FALSE}
+db_temp <- epw$data()$dry_bulb_temperature # degC
+# SET PLOT DATA HERE
+df <- cbind(db_temp,ilas_nodhw)
+```
+
+```{r message=FALSE}
+df_gg <- cbind(db_temp, ilas_nodhw)
+ggplot(df_gg, aes(x=db_temp,y=`0_BDRM_1_3`)) + geom_jitter(width = 0.6, height = 0, alpha = 1/20) + geom_smooth(se=F) + theme_classic(base_size = 16) + scale_y_continuous("Ideal Air Loads Cooling (J)") +  scale_x_continuous("Drybulb Temperature (°C)") + ggtitle("Studio Bedroom 1, Third Floor")
+```
+
+
+```{r message=FALSE}
+df_gg <- cbind(db_temp, hvac_dhw_var)
+ggplot(df_gg, aes(x=db_temp, y=`0_BDRM_1_3`)) + geom_jitter(width = 0.6, height = 0, alpha = 1/20) + geom_smooth(se=F) + theme_classic(base_size = 16) + scale_y_continuous("Energy Use (J)",labels = scales::scientific_format()) + scale_x_continuous("Drybulb Temperature (°C)") + ggtitle("Studio Bedroom 1, Third Floor")
+```
+
+### ggplot facet_wrap
+
+#### ilas_nodhw
+
+```{r include=FALSE}
+# how many zone variables?
+x <- df %>%
+  select(-c(db_temp, day, hour, month))# %>%  select(c(1:20))
+
+num_var <- x %>% length() # 54 zone variables
+
+# create db_temp in length of 54 x 8760
+db_list <- rep(df$db_temp, times = num_var)
+db_list %>% length() == num_var*8760
+db_list[1+8760*0] == db_list[1+8760*4]
+
+# concatenate all variables except db_temp
+# use rbind() instead of append()
+values <- vector(mode = "numeric")
+zones <- vector(mode = "character")
+type <- vector(mode = "character")
+
+
+for (col in 1:ncol(x)) { 
+  values <- append(values, x[,col])
+  zones <- append(zones, rep(colnames(x)[col], times = 8760))
+  type <- append(type, rep(type_f(colnames(x)[col]), times = 8760))
+}
+
+df <- data.frame(db_temp = as.double(db_list), values = as.integer(values), zones = as.factor(zones), type = as.factor(type))
+
+```
+
+```{r message=FALSE, warning=FALSE}
+
+#png(filename = "multi_smooth_ilas_nodhw.png", height = 480, width = 950, units = "px")
+# have to tell aes that the variable is a discrete `factor`
+p <- ggplot(df, aes(x = db_temp, y = values, color = type)) + geom_smooth(se = T, method = "gam", show.legend = T) + coord_cartesian(xlim = c(14,20))
+
+p + facet_wrap(~zones) + scale_x_continuous(limits = quantile(df$db_temp,c(0.25,0.75))) + labs(x = "Drybulb Temperature (°C)", y = "Cooling Load per Area (J/m^2)") + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12))) 
+
+#dev.off()
+```
+
+#### ilas_dhw_novar
+
+```{r include=FALSE}
+db_temp <- epw$data()$dry_bulb_temperature # degC
+# SET PLOT DATA HERE
+df <- cbind(db_temp,ilas_dhw_novar)
+
+
+# how many zone variables?
+x <- df %>%
+  select(-c(db_temp, day, hour, month))# %>%  select(c(1:20))
+
+num_var <- x %>% length() # 54 zone variables
+
+# create db_temp in length of 54 x 8760
+db_list <- rep(df$db_temp, times = num_var)
+db_list %>% length() == num_var*8760
+db_list[1+8760*0] == db_list[1+8760*4]
+
+# concatenate all variables except db_temp
+# use rbind() instead of append()
+values <- vector(mode = "numeric")
+zones <- vector(mode = "character")
+type <- vector(mode = "character")
+
+
+for (col in 1:ncol(x)) { 
+  values <- append(values, x[,col])
+  zones <- append(zones, rep(colnames(x)[col], times = 8760))
+  type <- append(type, rep(type_f(colnames(x)[col]), times = 8760))
+}
+
+df <- data.frame(db_temp = as.double(db_list), values = as.integer(values), zones = as.factor(zones), type = as.factor(type))
+
+```
+
+```{r}
+# have to tell aes that the variable is a discrete `factor`
+p <- ggplot(df, aes(x = db_temp, y = values, color = type)) + geom_smooth(se = T, method = "glm", show.legend = T) + coord_cartesian(xlim = c(14,20))
+
+p + facet_wrap(~zones) + scale_x_continuous(limits = quantile(df$db_temp,c(0.25,0.75))) + labs(x = "Drybulb Temperature (°C)", y = "Cooling Load per Area (J/m^2)") + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12)))
+
+
+```
+
+
+#### hvac_dhw_novar
+
+Try and jitter the data in Corridors and Stairs.
+
+```{r}
+hvac_dhw_novar$CORRIDOR_2 <- jitter(hvac_dhw_novar$CORRIDOR_2)
+hvac_dhw_novar$CORRIDOR_3 <- jitter(hvac_dhw_novar$CORRIDOR_3)
+hvac_dhw_novar$CORRIDOR_4 <- jitter(hvac_dhw_novar$CORRIDOR_4)
+hvac_dhw_novar$STAIRWELL_1_2 <- jitter(hvac_dhw_novar$STAIRWELL_1_2)
+hvac_dhw_novar$STAIRWELL_2_2 <- jitter(hvac_dhw_novar$STAIRWELL_2_2)
+STAIRWELL_1_3 <- jitter(hvac_dhw_novar$STAIRWELL_1_3)
+STAIRWELL_2_3 <- jitter(hvac_dhw_novar$STAIRWELL_2_3)
+STAIRWELL_1_4 <- jitter(hvac_dhw_novar$STAIRWELL_1_4)
+hvac_dhw_novar$STAIRWELL_2_4 <- jitter(hvac_dhw_novar$STAIRWELL_2_4)
+
+
+```
+
+
+```{r include=FALSE}
+db_temp <- epw$data()$dry_bulb_temperature # degC
+# SET PLOT DATA HERE
+df <- cbind(db_temp, hvac_dhw_novar)
+
+
+# how many zone variables?
+x <- df %>%
+  select(-c(db_temp, day, hour, month))# %>%  select(c(1:20))
+
+num_var <- x %>% length() # 54 zone variables
+
+# create db_temp in length of 54 x 8760
+db_list <- rep(df$db_temp, times = num_var)
+db_list %>% length() == num_var*8760
+db_list[1+8760*0] == db_list[1+8760*4]
+
+# concatenate all variables except db_temp
+# use rbind() instead of append()
+values <- vector(mode = "numeric")
+zones <- vector(mode = "character")
+type <- vector(mode = "character")
+
+
+for (col in 1:ncol(x)) { 
+  values <- append(values, x[,col])
+  zones <- append(zones, rep(colnames(x)[col], times = 8760))
+  type <- append(type, rep(type_f(colnames(x)[col]), times = 8760))
+}
+
+df <- data.frame(db_temp = as.double(db_list), values = as.integer(values), zones = as.factor(zones), type = as.factor(type))
+
+```
+
+```{r}
+# have to tell aes that the variable is a discrete `factor`
+p <- ggplot(df, aes(x = db_temp, y = values, color = type)) + geom_smooth(se = T, method = "glm", show.legend = T) + coord_cartesian(xlim = c(14,20))
+
+p + facet_wrap(~zones) + scale_x_continuous(limits = quantile(df$db_temp,c(0.25,0.75))) + labs(x = "Drybulb Temperature (°C)", y = "Energy Use per Area (J/m^2)") + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12)))
+
+
+```
+
+
+
+#### hvac_dhw_var
+
+
+```{r include=FALSE}
+db_temp <- epw$data()$dry_bulb_temperature # degC
+# SET PLOT DATA HERE
+df <- cbind(db_temp,hvac_dhw_var)
+
+
+# how many zone variables?
+x <- df %>%
+  select(-c(db_temp, day, hour, month)) #%>%  select(c(1,48,54))
+
+num_var <- x %>% length() # 54 zone variables
+
+# create db_temp in length of 54 x 8760
+db_list <- rep(df$db_temp, times = num_var)
+db_list %>% length() == num_var*8760
+db_list[1+8760*0] == db_list[1+8760*4]
+
+# concatenate all variables except db_temp
+# use rbind() instead of append()
+values <- vector(mode = "numeric")
+zones <- vector(mode = "character")
+type <- vector(mode = "character")
+
+
+for (col in 1:ncol(x)) { 
+  values <- append(values, x[,col])
+  zones <- append(zones, rep(colnames(x)[col], times = 8760))
+  type <- append(type, rep(type_f(colnames(x)[col]), times = 8760))
+}
+
+df <- data.frame(db_temp = as.double(db_list), values = as.integer(values), zones = as.factor(zones), type = as.factor(type))
+
+```
+
+```{r}
+# have to tell aes that the variable is a discrete `factor`
+p <- ggplot(df, aes(x = db_temp, y = values, color = type)) + geom_smooth(se = T, method = "glm", show.legend = T) + coord_cartesian(xlim = c(14,20))
+
+p + facet_wrap(~zones) + scale_x_continuous(limits = quantile(df$db_temp,c(0.25,0.75))) + labs(x = "Drybulb Temperature (°C)", y = "Energy Use per Area (J/m^2)") + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12)))
+
+
+```
+
+
+### faceted ggplot for select 4 days
+
+```{r RUN FOR 4 IMAGE, eval=FALSE, include=FALSE}
+library(ggplot2)
+# Jan, Apr, Aug, Oct
+
+x <- sel_days_epw
+
+# set resolution
+png("4days.png", units = "in", width = 8, height = 5, res = 500)
+
+# have to tell aes that the variable is a discrete `factor`
+p <- ggplot(x, aes(x = hour, y = dry_bulb_temperature, color = factor(month))) + geom_smooth(se = F, span = 0.3)
+
+# new facet label names for month variable
+month.labs <- c("January 21","April 21","August 21","October 21")
+names(month.labs) <- months_of_interest
+
+p + facet_grid(rows = vars(month), labeller = labeller(month = month.labs)) + scale_color_discrete(name = "Month", labels = month.name[months_of_interest]) + scale_x_continuous(name = "Hour", breaks = c(1,6,12,18,24)) + theme_bw() + theme(legend.position = "none", axis.title.y = element_text(margin = margin(r=10))) + labs(y = "Dry Bulb Temperature (°C)")
+
+dev.off()
+```
+
+Dry bulb temperature versus hour for four select days in the typical Los Angeles meteorological year: ![](images/4days.png)
+
+### Faceted climate ggplot for 365 days
+
+```{r eval=FALSE, include=FALSE}
+# make unique day index 1..365
+d <- nrow(ilas_nodhw)/24
+d_ind <- rep(1:d, each = 24)
+
+# alternative 2 with iteration
+# c_vec <- vector(mode = "numeric", nrow(ilas_nodhw)) # instantiate
+# for (i in length(c_vec)) { # control flow
+#   if (logic) {i <<- i + 1} # iterator
+# }
+
+```
+
+
+```{r RUN FOR 365 IMAGE, eval=FALSE, include=FALSE}
+library(ggplot2)
+# Jan 31 days
+sel_days_epw <- cbind(d_ind, epw$data()) %>%
+  select(d_ind, month, day, hour, dry_bulb_temperature) %>%
+  filter(month %in% c(1:12))
+
+x <- sel_days_epw
+
+# set resolution
+png("365.png", units = "in", width = 8, height = 5, res = 500)
+
+# custom color palette named vector
+colorv <- rep( 
+  RColorBrewer::brewer.pal(8, name = "Dark2"),
+  length.out = 12)
+names(colorv) <- 1:12
+
+# have to tell aes that the variable is a discrete `factor`
+p <- ggplot(x, aes(x = hour, y = dry_bulb_temperature, color = factor(month))) + geom_smooth(se = F, span = 0.35)
+
+p + facet_wrap(~d_ind) + scale_color_manual(name = "Month", labels = month.abb, values = colorv) + scale_x_discrete(labels = NULL) + scale_y_discrete(labels = NULL) + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12))) + labs(x = NULL, y = "Drybulb temperature")
+
+dev.off()
+```
+
+Dry bulb temperature versus time of the full 365 days of the typical meteorological year for Los Angeles: ![](images/365.png)
+
+
+<br><br><br>

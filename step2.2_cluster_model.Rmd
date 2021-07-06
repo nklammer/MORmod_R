@@ -1,0 +1,151 @@
+---
+title: "Cluster Model"
+author: "Noah Klammer"
+date: "6/28/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## Clear global env and report
+
+```{r include=FALSE}
+rm(list = ls())
+gc()
+```
+
+# Intro
+
+This is my thrid attempt at clustering of zones using the ideal air loads output variable. First I tried 3-space, then I  tried 364-space clustering. Confident in the speed of computation, I'm going to try all hours in the simulation year, 8760-space clustering.
+
+## Import Rda data
+
+```{r import, message=FALSE, warning=FALSE}
+load(file = "ilas_nodhw.Rda")
+load(file = "ilas_dhw_novar.Rda")
+load(file = "hvac_dhw_novar.Rda")
+load(file = "hvac_dhw_var.Rda")
+
+```
+
+### Set data
+
+```{r}
+# CHANGE DATA HERE
+df <- ilas_dhw_novar
+```
+
+# Feature normalization
+
+Normalize values by floor area of the respective zone.
+
+## Area to Zone mapping
+
+Load in an external data set of rows with two attributes: zone name and floor area in m^2. Since the zone-area dataset and the Ideal Air Loads dataset may have different order, create a simple indexing function.
+
+### Normalize Loads by Floor Area
+
+```{r warning=FALSE}
+
+### Drop Date/Time and save for later
+time_cols <- select(df, c(hour,day,month))
+rownames(time_cols) <- rownames(df) # need to keep row labels
+df <- select(df, -c(hour,day,month)) 
+
+### Load Area Map
+area_map <- read_csv("ZoneFloorArea-Map.csv")
+
+idx_f <- function(string) { # takes zone string and maps to zone index in area_map
+  which(string==area_map$`Zone List`) # returns num vec
+  }
+
+area_idx <- sapply(colnames(df),idx_f) # maps df idx to area idx
+area_vec <- area_map$`Space Area [m2]`[area_idx]
+
+# apply normalization vector across columns
+df <- sweep(df, 2, area_vec, FUN = "/") 
+
+# change units
+# **[J]** => [J/m^2]
+rownames(df) <- str_replace(rownames(df),"(?<=\\[)J{1}","J/m^2")
+
+### Add Date/Time back in
+df <- cbind(time_cols,df)
+```
+
+
+# Clustering
+
+You might think that they would only be heating loads on the winter extreme day, but in this building type and climate, we find that there is more building cooling load [J] than heating load even during winter.
+
+Traditionally, we would remove columns with zero variance as they are unhelpful in the sense of regression. However, in clustering we may want to leave them in.
+
+## Transpose and cluster
+
+Let's introduce the `apcluster` package which is an implementation of Frey and Dueck's popular Affinity Propagation method for passing messages between pairs of data. I would make sure to reference the [math paper](https://doi.org/10.1080/19401493.2017.1410572), the [R package](https://doi.org/10.1093/bioinformatics/btr406), and the [original method's](https://doi.org/10.1126/science.1136800) publication.
+
+
+```{r turnkey cluster process}
+library(apcluster)
+
+
+# drop time date cols in
+# preparation for clustering
+if ("minute" %in% colnames(df)) {
+  df <- subset(df, select = -c(day, hour, month, minute))
+} else {
+  df <- subset(df, select = -c(day, hour, month))
+}
+
+tdf <- as.data.frame(t(df))
+
+APR <- apcluster(negDistMat(r=2), tdf, details = TRUE) # returns a APResult
+
+area_map <- read_csv("ZoneFloorArea-Map.csv")
+
+idx_f <- function(string) { # takes zone string and maps to zone index in area_map
+  which(string==area_map$`Zone List`) # returns num vec
+  }
+
+# this creates the scalar vector
+# but does not apply the scalar on the df yet
+scalars <- vector(mode = "numeric")
+for (i in 1:length(APR@clusters)) { # iterate through each cluster
+  # get list of members of cluster i # char vec
+  member_zone_names <- names(unlist(APR@clusters[i])) # inclusive of exemplar
+  # map strings to m2 values # num vec
+  area_idx <- sapply(member_zone_names, idx_f) # maps cluster idx to area idx
+  # get floor area num values
+  member_area_num <- area_map$`Space Area [m2]`[area_idx] # num vec
+  # create scalar and append to num vec in order of clusters i
+  # sum area numbers
+  scalars <- append(scalars, sum(member_area_num)) # scaling factor is sum of areas
+}
+
+# reduce dimensionality of 'df' using clusters
+red_df <- df[APR@exemplars] # returns 8760 rows with reduced columns
+
+# apply scalar vec from above to red_df
+# is the scalar of the right length?
+ncol(red_df) == length(scalars)
+
+# apply area scalars to reduced df
+red_df <- sweep(red_df, 2, scalars, FUN = "*")
+
+# change units
+rownames(red_df) <- str_replace(rownames(red_df),"J/m\\^2","J")
+
+### Add Date/Time back in
+red_df <- cbind(time_cols,red_df)
+
+### Save out
+ilas_dhw_novar_red <- red_df
+save(ilas_dhw_novar_red, file = "ilas_dhw_novar_red.Rda")
+```
+
+# End
+
+<br><br><br>

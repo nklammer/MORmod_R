@@ -1,0 +1,196 @@
+---
+title: "Step 1: Preprocess data for analysis"
+author: "Noah Klammer"
+date: "6/27/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## Clear global and report
+
+```{r}
+rm(list = ls())
+gc()
+```
+
+
+# Import
+
+## ESO timeseries from "zemf_hvac_dhw_var_eso"
+
+```{r import, message=FALSE, warning=FALSE}
+library(readr)
+df <- read_csv("../data_in/zemf_mini_erv_dhw_var_eso.csv", 
+    skip = 3)
+colnames(df)[1] <- "Date/Time"
+#View(df)
+```
+
+
+```{r infer time sampling, include=FALSE}
+# readr::spec(df)
+freq <- "null"
+rows <- nrow(df) 
+if (rows==8760*4) {
+  freq <- "15 minutes"
+} else if (rows==8760) {
+  freq <- "hourly"
+} else if (rows==12) {
+  freq <- "monthly"
+} else {freq <- "could not determine"}
+```
+
+There are ``r ncol(df)`` column variables in this file with names like ``r names(df)[3]``, ``r names(df)[6]``, and ``r names(df)[50]``.
+
+The frequency of this .eso file's timestep is ``r freq``.
+
+### Rowname labels
+
+Named rows are helpful labels for a dataframe without 'being' data per se.
+
+```{r warning=FALSE}
+# probably just easier to do this in Excel
+eighty760_labels <- str_replace(df$`Date/Time`,"/\\d{4}","") # take out year
+rownames(df) <- eighty760_labels
+rownames(df) <- paste(df$`Date/Time`,"Energy Use [J]") # Add in variable name
+```
+
+### Zone names for columns
+
+```{r}
+# string replace colnames
+# drop time column
+time_col <- select(df, c(`Date/Time`))
+# save rowname labels
+rownames(time_col) <- rownames(df)
+df <- select(df, -c(`Date/Time`))
+regex_str <- "(?<=Zone\\:).+(?=\\s)|(?<=\\s\\-\\s).*(?=\\sELECTRICITY)"
+zone_names <- str_extract(colnames(df), regex_str)
+colnames(df) <- zone_names
+df <- cbind(time_col,df)
+```
+
+# Inspect Zones and select only residential zones of interest
+
+Dwelling units, stairwells, and corridors above the first floor are all considered residential zones.
+
+### Drop Date/Time and save for later
+
+```{r}
+# drop Date/Time col
+time_col <- select(df, c(`Date/Time`))
+rownames(time_col) <- rownames(df)
+```
+
+```{r}
+res_list <- 
+c(
+grep("STAIRWELL_\\d", colnames(df), value = TRUE),
+grep("CORRIDOR_\\d", colnames(df), value = TRUE),  
+grep("BDRM", colnames(df), value = TRUE)
+)
+
+sorted_list <- stringr::str_sort(res_list, numeric = TRUE)
+
+df <- df[sorted_list]
+```
+
+### Add Date/Time back in
+
+```{r warning=FALSE}
+`Date/Time` <- time_col
+df <- cbind(`Date/Time`,df)
+#rownames(df) <- paste(eighty760_labels, "Ideal Tot. Clg Load [J/m^2]")
+```
+
+### Create columns for categorical month, day, hour, minute
+
+```{r warning=FALSE}
+# separate the date and time into cols month, day, hour, minute
+# make sure to have two digits for all days and months
+df <- df %>%
+  mutate(month = as.integer(substr(`Date/Time`, start = 1, stop = 2)),
+         day = as.integer(substr(`Date/Time`, start = 4, stop = 5)),
+         hour = as.integer(substr(`Date/Time`, start = 7, stop = 8)), # hour is not working
+         `Date/Time` = as.integer(substr(`Date/Time`, start = 10, stop = 11))) %>%
+  rename(minute = `Date/Time`)
+
+sorted_list <- stringr::str_sort(colnames(df), numeric = TRUE)
+
+df <- df[sorted_list]
+# numeric month var to month string
+# df <- transform(df, month = month.abb[month])
+
+```
+
+
+### Data QA/QC: remove observations with NA
+
+```{r}
+# remove NA observations
+# remove minute col if subhourly data DNE
+if (is.null(df$minute)) { # do nothing, check if exists
+  } else if (var(df$minute)==0) { # take out minute with zero variance
+  df <- select(df,-minute)} else { # do nothing
+  }
+
+if (anyNA(df)) { # then
+  df <- df %>% na.omit()
+}
+# remove the automatic row numbers
+# rownames(df) <- NULL
+```
+
+
+### Data QA/QC: zero variance
+
+```{r include=FALSE}
+
+sel_days_df <- df 
+
+# visdat::vis_cor(sel_days_df)
+#=> "the standard deviation is zero"
+
+# let's find which cols have zero variance
+zv <- which(apply(sel_days_df, 2, var) == 0)
+
+z_var_zones <- str_subset(colnames(sel_days_df)[zv],"")
+
+# get zones that str match with "cooling"
+c <- z_var_zones
+# get zones that str match with "heating"
+# h <- grep("*\\Deating", z_var_zones, value = TRUE)
+
+# extracts zone name logic
+# c <- str_extract(c,"(?<=SYSTEM\\s).*(?=\\:)")
+# h <- str_extract(h,"(?<=SYSTEM\\s).*(?=\\:)")
+
+# are there any zones with neither heating nor cooling?
+# intersect(c,h)
+#=> unconditioned zones
+
+# remove the unc zones from
+# `zero_var_zone_names` string list
+z_var_zone_names <- z_var_zones
+```
+
+The longer we work with this data set, the more clear it is that many zones have zero variance. We see that ``r length(z_var_zones)`` out of ``r length(sel_days_df)`` zones have zero variance for this temporal range.
+
+We find that there are ``r length(c)`` zones with no cooling load and `0` zones with no heating load. We assert that `r length(z_var_zones)` have neither cooling nor heating load. These zones are unconditioned spaces.
+
+Naturally, for a correctly defined building energy model, few if any hours of a certain zone will have both heating and cooling. For possible future regression purposes, I will treat heating load as negative cooling load.
+
+
+### Save as .Rda R data file
+
+```{r}
+hvac_dhw_var <- df
+save(hvac_dhw_var,file = "hvac_dhw_var.Rda")
+```
+
+
+<br><br><br>

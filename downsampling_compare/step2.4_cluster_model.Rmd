@@ -1,0 +1,218 @@
+---
+title: "Cluster Model: Downsampling with hvac_dhw_var"
+author: "Noah Klammer"
+date: "6/28/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## Clear global env and report
+
+```{r include=FALSE}
+rm(list = ls())
+gc()
+```
+
+# Intro
+
+This is my thrid attempt at clustering of zones using the ideal air loads output variable. First I tried 3-space, then I  tried 364-space clustering. Confident in the speed of computation, I'm going to try all hours in the simulation year, 8760-space clustering.
+
+## Import Rda data
+
+```{r import, message=FALSE, warning=FALSE}
+load(file = "hvac_dhw_var.Rda")
+```
+
+### Set data
+
+```{r}
+# CHANGE DATA HERE
+df <- hvac_dhw_var
+```
+
+## Downsample day, week, month
+
+Here we can choose to downsample our temporal data from hour to `day`, `week`, or `month`.
+
+```{r}
+downsample <- TRUE
+sample_interval <- "week" # choices: "day", "week", "month
+
+if (downsample == TRUE) {
+  if (sample_interval == "day") {
+    # downsample to day
+    day_idx <- data.frame(day_idx = rep(1:365, each = 24))
+    rownames(day_idx) <- rownames(df)
+    df <- cbind(day_idx,df) %>%
+      group_by(day_idx) %>%
+      summarize(across(-c(day,hour,month),sum)) %>%
+      select(-c(day_idx))
+    hvac_dhw_var_day <- df
+    save(hvac_dhw_var_day, file = "hvac_dhw_var_day.Rda")
+  }
+  else if (sample_interval == "week") {
+  # downsample to week
+  week_idx <- data.frame(week_idx = rep(1:52, each = 7*24, length.out = 8760))
+  rownames(week_idx) <- rownames(df)
+  df <- cbind(week_idx,df) %>%
+    group_by(week_idx) %>%
+    summarize(across(-c(day,hour,month),sum)) %>%
+    select(-c(week_idx))
+  hvac_dhw_var_week <- df
+  save(hvac_dhw_var_week, file = "hvac_dhw_var_week.Rda")
+  }
+  else {
+  # downsample to month
+  df <- df %>%
+    group_by(month) %>%
+    summarize(across(-c(day,hour),sum)) %>%
+    select(-c(month))
+  hvac_dhw_var_month <- df
+  save(hvac_dhw_var_month, file = "hvac_dhw_var_month.Rda")
+  }
+}
+  
+```
+
+# Feature normalization
+
+Normalize values by floor area of the respective zone.
+
+## Area to Zone mapping
+
+Load in an external data set of rows with two attributes: zone name and floor area in m^2. Since the zone-area dataset and the Ideal Air Loads dataset may have different order, create a simple indexing function.
+
+### Normalize Loads by Floor Area
+
+```{r message=FALSE}
+
+### Drop Date/Time and save for later
+if ("hour" %in% colnames(df)) {
+  time_cols <- select(df, c(hour,day,month))
+  rownames(time_cols) <- rownames(df) # need to keep row labels
+  df <- select(df, -c(hour,day,month)) 
+} else if ("day" %in% colnames(df)) {
+  time_cols <- select(df, c(day,month))
+  rownames(time_cols) <- rownames(df) # need to keep row labels
+  df <- select(df, -c(day,month)) 
+} else if ("month" %in% colnames(df)) {
+  time_cols <- select(df, month)
+  rownames(time_cols) <- rownames(df)
+  df <- select(df, -month)
+} else {}
+
+### Load Area Map
+area_map <- read_csv("../ZoneFloorArea-Map.csv")
+
+idx_f <- function(string) { # takes zone string and maps to zone index in area_map
+  which(string==area_map$`Zone List`) # returns num vec
+  }
+
+area_idx <- sapply(colnames(df),idx_f) # maps df idx to area idx
+area_vec <- area_map$`Space Area [m2]`[area_idx]
+
+# apply normalization vector across columns
+df <- sweep(df, 2, area_vec, FUN = "/") 
+
+# change units
+# **[J]** => [J/m^2]
+rownames(df) <- str_replace(rownames(df),"(?<=\\[)J{1}","J/m^2")
+
+### Add Date/Time back in
+if (exists("time_cols")) {
+df <- cbind(time_cols,df)
+}
+```
+
+
+# Clustering
+
+Traditionally, we would remove columns with zero variance as they are unhelpful in the sense of regression. However, in clustering we may want to leave them in.
+
+
+
+## Transpose and cluster
+
+Let's introduce the `apcluster` package which is an implementation of Frey and Dueck's popular Affinity Propagation method for passing messages between pairs of data. I would make sure to reference the [math paper](https://doi.org/10.1080/19401493.2017.1410572), the [R package](https://doi.org/10.1093/bioinformatics/btr406), and the [original method's](https://doi.org/10.1126/science.1136800) publication.
+
+
+```{r turnkey cluster process}
+library(apcluster)
+
+# drop time date cols in
+# preparation for clustering
+if ("minute" %in% colnames(df)) {
+  df <- subset(df, select = -c(day, hour, month, minute))
+} else if ("day" %in% colnames(df)) {
+  df <- subset(df, select = -c(day, hour, month))
+} else {}
+
+tdf <- as.data.frame(t(df))
+
+APR <- apcluster(negDistMat(r=2), tdf, details = TRUE) # returns a APResult
+
+print(paste("The number of clusters is", length(APR@clusters)))
+
+area_map <- read_csv("../ZoneFloorArea-Map.csv")
+
+idx_f <- function(string) { # takes zone string and maps to zone index in area_map
+  which(string==area_map$`Zone List`) # returns num vec
+  }
+
+# this creates the scalar vector
+# but does not apply the scalar on the df yet
+scalars <- vector(mode = "numeric")
+for (i in 1:length(APR@clusters)) { # iterate through each cluster
+  # get list of members of cluster i # char vec
+  member_zone_names <- names(unlist(APR@clusters[i])) # inclusive of exemplar
+  # map strings to m2 values # num vec
+  area_idx <- sapply(member_zone_names, idx_f) # maps cluster idx to area idx
+  # get floor area num values
+  member_area_num <- area_map$`Space Area [m2]`[area_idx] # num vec
+  # create scalar and append to num vec in order of clusters i
+  # sum area numbers
+  scalars <- append(scalars, sum(member_area_num)) # scaling factor is sum of areas
+}
+
+# reduce dimensionality of 'df' using clusters
+red_df <- df[APR@exemplars] # returns 8760 rows with reduced columns
+
+# apply scalar vec from above to red_df
+# is the scalar of the right length?
+ncol(red_df) == length(scalars)
+
+# apply area scalars to reduced df
+red_df <- sweep(red_df, 2, scalars, FUN = "*")
+
+# change units
+rownames(red_df) <- str_replace(rownames(red_df),"J/m\\^2","J")
+
+### Add Date/Time back in
+if (exists("time_cols")) {
+red_df <- cbind(time_cols,red_df)
+}
+
+### Save out
+if (sample_interval=="day") {
+  hvac_dhw_var_day_red <- red_df
+  save(hvac_dhw_var_day_red, file = "hvac_dhw_var_day_red.Rda")
+  print("The file 'hvac_dhw_var_day_red.Rda' was saved.")
+} else if (sample_interval=="week") {
+  hvac_dhw_var_week_red <- red_df
+  save(hvac_dhw_var_week_red, file = "hvac_dhw_var_week_red.Rda")
+  print("The file 'hvac_dhw_var_week_red.Rda' was saved.")
+} else if (sample_interval=="month") {
+  hvac_dhw_var_month_red <- red_df
+  save(hvac_dhw_var_month_red, file = "hvac_dhw_var_month_red.Rda")
+  print("The file 'hvac_dhw_var_month_red.Rda' was saved.")
+} else {print("No file was saved.")}
+
+```
+
+# End
+
+<br><br><br>
