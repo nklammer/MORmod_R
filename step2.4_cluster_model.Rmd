@@ -104,6 +104,8 @@ tdf <- as.data.frame(t(df))
 
 APR <- apcluster(negDistMat(r=2), tdf, details = TRUE) # returns a APResult
 
+APR@idx
+
 print(paste("The number of cluster is",length(APR@clusters)))
 
 area_map <- read_csv("ZoneFloorArea-Map.csv")
