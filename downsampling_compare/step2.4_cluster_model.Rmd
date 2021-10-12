@@ -40,7 +40,7 @@ Here we can choose to downsample our temporal data from hour to `day`, `week`, o
 
 ```{r}
 downsample <- TRUE
-sample_interval <- "week" # choices: "day", "week", "month
+sample_interval <- "week" # choices: "day", "week", "month"
 
 if (downsample == TRUE) {
   if (sample_interval == "day") {
