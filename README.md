@@ -39,8 +39,10 @@ Sketch notebook that practiced the manipulation of R packages `cluster` and `pvc
 Simple two column table that maps the Zone string ID (e.g., "0_BDRM_1_2") to the Ideal Air Loads System Number. The Ideal...Number was assigned as the `EnableIdealAirLoads` measure was affected. I believe (?) this may be deprecated now that I have changed the `#run` method of the measure to include the human-readable string name of the zone in the name of the Ideal Air Load System.
 
 #### `Multifamily_Parameters.xlsx`
+Another important, misplaced spreadsheet. This is a master table is a quick reference for finding model geometry parameters quickly given the zone name (e.g., space type, floor multiplier, space area m2, zone volume m3, above ground gross ext wall area m2...).
 
 #### `ZoneFloorArea-Map.csv`
+Simple two column table that maps the Zone string ID (e.g., "0_BDRM_1_2") to its floor area (m2). Necessary for parameter normalization before clustering action.
 
 #### `hvac_dhw_novar.Rda`
 
