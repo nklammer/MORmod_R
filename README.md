@@ -15,7 +15,7 @@ Includes outputs of `algorithm_compare_k13.csv` and `algorithm_compare_k13.xlsx`
 
 Uses R data from the `hvac_dhw_var.Rda` case for illustrative purposes.
 
-### `data_in`
+### `input/*`
 This is where I manually situated the output variable data that was output from the `.eso` files. R analysis read in data points to this directory.
 
 ### `downsampling`
