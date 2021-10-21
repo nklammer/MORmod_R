@@ -6,7 +6,7 @@ There is an option(?) to run shell commands via engines like `bash` from inside 
 
 Currently, `bash is not recognized as an internal or external command, operable program or batch file.`
 
-### `algorithm_compare`
+### `algorithm_compare/*`
 Add in table comparison of cluster member groupings across cluster methods.
 
 Returns output of Figure PNG that is a panelized figure of 6 clusters across 52 weeks to illustrate the similarities between energy use profiles.
@@ -18,13 +18,13 @@ Uses R data from the `hvac_dhw_var.Rda` case for illustrative purposes.
 ### `input/*`
 This is where I manually situated the output variable data that was output from the `.eso` files. R analysis read in data points to this directory.
 
-### `downsampling`
+### `downsampling/*`
 In this folder, I control for temporal period using downsampling and examine its effect on the meteric CV-RMSE and NMBE.
 
-### `images`
+### `images/*`
 In this directory I placed bitmap images that were produced by R but are meant to be anchored into `knitr` HTML notebooks. This was for various reasons.
 
-### `sensitivity_analysis`
+### `sensitivity_analysis/*`
 Update for table in Results chapter.
 
 #### `Calcs.xlsx`
