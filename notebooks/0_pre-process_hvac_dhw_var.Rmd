@@ -1,7 +1,7 @@
 ---
 title: "Step 1: Preprocess data for analysis"
 author: "Noah Klammer"
-date: "6/27/2021"
+date: "10/22/2021"
 output: html_document
 ---
 
@@ -15,116 +15,184 @@ library(tidyverse)
 ```{r}
 rm(list = ls())
 gc()
+ptm <- proc.time() # start timer
 ```
 
 
 # Import
 
-## ESO timeseries from "zemf_hvac_dhw_var_eso"
+## Timeseries from "zemf_hvac_dhw_var"
 
 ```{r import, message=FALSE, warning=FALSE}
+## Import
 library(readr)
-df <- read_csv("data_in/zemf_mini_erv_dhw_var_eso.csv", 
-    skip = 3)
-colnames(df)[1] <- "Date/Time"
-#View(df)
+# specify automatic assignment of double variable type to columns with .default
+output <- read_csv("~/MORmod_R/input/zemf_hvac_dhw_var/output.dview", 
+    skip = 1, col_types = list(.default = col_double()))
+# DView format has a 1x1 header followed by 3xN header
+#   take out the headers in "tidy" fashion
+df <- output %>% slice(-(1:3))
+```
+
+```{r remove vars not studied}
+## Remove variables not studied
+vars_not_studied <- c(
+  "Site|Pumps:Electricity",
+  "Site|WaterSystems:Electricity",
+  "Site|Cooling:Electricity",
+  "Site|Electricity:Facility",
+  "Site|ExteriorLights:Electricity",
+  "Site|Fans:Electricity",
+  "Site|HeatRecovery:Electricity",
+  "Site|Heating:Electricity",
+  "Site|InteriorEquipment:Electricity",
+  "Site|InteriorLights:Electricity"
+)
+
+# remove in "tidy" fashion
+df <- df %>% select(-contains(vars_not_studied))
+
 ```
 
 
+
 ```{r infer time sampling, include=FALSE}
-# readr::spec(df)
-freq <- "null"
+## Infer time sampling
+
+# uncomment below to see the parsed var types for cols
+#   readr::spec(df)
+
+data_freq <- "null"
 rows <- nrow(df) 
-if (rows==8760*4) {
-  freq <- "15 minutes"
-} else if (rows==8760) {
-  freq <- "hourly"
+if (rows==4*24*(365||366)) {
+  data_freq <- "15 minutes"
+} else if (rows==24*(365||366)) {
+  data_freq <- "hourly"
 } else if (rows==12) {
-  freq <- "monthly"
-} else {freq <- "could not determine"}
+  data_freq <- "monthly"
+} else {}
 ```
 
 There are ``r ncol(df)`` column variables in this file with names like ``r names(df)[3]``, ``r names(df)[6]``, and ``r names(df)[50]``.
 
-The frequency of this .eso file's timestep is ``r freq``.
+The data_frequency of this .eso file's timestep is ``r data_freq``.
 
-### Rowname labels
+## Add in hour, day, month
 
-Named rows are helpful labels for a dataframe without 'being' data per se.
+```{r Create columns "hour", "day", "month"}
+# create a date/time columns
+#   month, day, hour
 
-```{r warning=FALSE}
-# probably just easier to do this in Excel
-eighty760_labels <- str_replace(df$`Date/Time`,"/\\d{4}","") # take out year
-rownames(df) <- eighty760_labels
-rownames(df) <- paste(df$`Date/Time`,"Energy Use [J]") # Add in variable name
+# add `hour_index` column in "tidy" fashion
+df <- df %>% add_column(hour_index = 1:nrow(df), .before = 1)
+
+# add `hour` column in "tidy" fashion
+df <- df %>% add_column(hour = rep(0:23,length.out = nrow(df)), .before = 1)
+
+add_months <- function(df) {
+  if (nrow(df)==24*365) { # if leap year
+    days_in_month <- 24*c(31,28,31,30,31,30,31,31,30,31,30,31)
+    }
+  else if (nrow(df)==24*366) { # if not leap year
+    days_in_month <- 24*c(31,29,31,30,31,30,31,31,30,31,30,31)
+  }
+  # create atomic array of days and months info
+  month_num <- 1:12
+  array_months <- cbind(days_in_month, month_num)
+
+  # returns the month number
+  #   custom function that repeats the the month number
+  #   by the number of days in that month
+  make_month_num <- function(x) {rep(x["month_num"], times = x["days_in_month"])}
+  month_nums <- unlist(apply(array_months, 1, make_month_num))
+  
+  # add as `month` column in "tidy" fashion
+  df %>% add_column(month = month_nums, .before = 1) 
+  }
+
+add_days_of_month <- function(df) {
+  if (nrow(df)==24*365) { # if leap year
+    days_in_month <- c(31,28,31,30,31,30,31,31,30,31,30,31)
+  }
+  else if (nrow(df)==24*366) { # if not leap year
+    days_in_month <- c(31,29,31,30,31,30,31,31,30,31,30,31)
+  }
+  # create atomic array of days and months info
+  month_num <- 1:12
+  array_months <- cbind(days_in_month, month_num)
+
+  # returns the day of the month
+  #   length(day_of_month) == 24*(365||366)
+  returns_day_of_month <- unlist(lapply(days_in_month, function(x) {seq(1:x)}))
+  day_nums <- rep(returns_day_of_month, each = 24)
+  
+  # add as `day` column in "tidy" fashion
+  df %>% add_column(day = day_nums, .before = 1) 
+}
+
+df <- add_days_of_month(df)
+df <- add_months(df)
 ```
+
+
 
 ### Zone names for columns
 
 ```{r}
-# string replace colnames
-# drop time column
-time_col <- select(df, c(`Date/Time`))
-# save rowname labels
-rownames(time_col) <- rownames(df)
-df <- select(df, -c(`Date/Time`))
+# Drop and then add back later "" column
+#   because I am not smart enough to 
+#   do it in "dplyr" fashion 
+time_date_col_names <- c("month","day","hour","hour_index")
+time_date_data <- df %>% select(all_of(time_date_col_names))
+df <- df %>% select(-all_of(time_date_col_names))
+
+# REGEX expression
+# any char at least once preceded by "Zone:" AND
+#   followed by " " OR " - " then any char 
+#   at least 0 followed by " ELECTRICITY"
 regex_str <- "(?<=Zone\\:).+(?=\\s)|(?<=\\s\\-\\s).*(?=\\sELECTRICITY)"
+# extract the zone names based on above REGEX
 zone_names <- str_extract(colnames(df), regex_str)
-colnames(df) <- zone_names
-df <- cbind(time_col,df)
+colnames(df) <- zone_names # zone names become new col names
+
 ```
 
 # Inspect Zones and select only residential zones of interest
 
 Dwelling units, stairwells, and corridors above the first floor are all considered residential zones.
 
-### Drop Date/Time and save for later
-
 ```{r}
-# drop Date/Time col
-time_col <- select(df, c(`Date/Time`))
-rownames(time_col) <- rownames(df)
-```
-
-```{r}
-res_list <- 
-c(
-grep("STAIRWELL_\\d", colnames(df), value = TRUE),
-grep("CORRIDOR_\\d", colnames(df), value = TRUE),  
-grep("BDRM", colnames(df), value = TRUE)
-)
-
-sorted_list <- stringr::str_sort(res_list, numeric = TRUE)
-
-df <- df[sorted_list]
-```
-
-### Add Date/Time back in
-
-```{r warning=FALSE}
-`Date/Time` <- time_col
-df <- cbind(`Date/Time`,df)
-#rownames(df) <- paste(eighty760_labels, "Ideal Tot. Clg Load [J/m^2]")
-```
-
-### Create columns for categorical month, day, hour, minute
-
-```{r warning=FALSE}
-# separate the date and time into cols month, day, hour, minute
-# make sure to have two digits for all days and months
+# can I do this in "tidy" fashion
 df <- df %>%
-  mutate(month = as.integer(substr(`Date/Time`, start = 1, stop = 2)),
-         day = as.integer(substr(`Date/Time`, start = 4, stop = 5)),
-         hour = as.integer(substr(`Date/Time`, start = 7, stop = 8)), # hour is not working
-         `Date/Time` = as.integer(substr(`Date/Time`, start = 10, stop = 11))) %>%
-  rename(minute = `Date/Time`)
+  select(contains("STAIRWELL") | contains("CORRIDOR") | contains("BDRM")) %>%
+  select(sort(current_vars()))
 
-sorted_list <- stringr::str_sort(colnames(df), numeric = TRUE)
+# add time/date columns back in
+df <- bind_cols(time_date_data, df)
 
-df <- df[sorted_list]
-# numeric month var to month string
-# df <- transform(df, month = month.abb[month])
+# auto checker
+#   bool check that time/date cols are present
+time_date_present <- length(time_date_col_names) == df %>% select(all_of(time_date_col_names)) %>% ncol(.)
 
+#   bool check that no extra cols are present
+no_extra_col <- 0 == df %>% select(-c(all_of(time_date_col_names), contains("STAIRWELL") | contains("CORRIDOR") | contains("BDRM"))) %>% ncol(.)
+
+```
+
+The auto checker revealed that it is ``r time_date_present`` that time and date columns are present in the dataframe after this step. The auto checker revealed that it is ``r no_extra_col`` that no extra columns are present.
+
+### Rowname labels
+
+Named rows are helpful labels for a dataframe that undergoes unsupervised clustering.
+
+```{r Add rownames, warning=FALSE}
+## Add rownames to dataframe
+#   could also do this in Excel
+
+# constructs "human" date/time vector from existing columns
+row_date_time_labels <- paste0(month.abb[df$month]," ", df$day, ", ", df$hour, ":00")
+# inserts rownames, adds physical unit name
+rownames(df) <- paste(row_date_time_labels,"Energy Use [J]") # Add in variable name
 ```
 
 
@@ -158,12 +226,12 @@ sel_days_df <- df
 # let's find which cols have zero variance
 zv <- which(apply(sel_days_df, 2, var) == 0)
 
-z_var_zones <- str_subset(colnames(sel_days_df)[zv],"")
+zero_var_zones <- str_subset(colnames(sel_days_df)[zv],"")
 
 # get zones that str match with "cooling"
-c <- z_var_zones
+c <- zero_var_zones
 # get zones that str match with "heating"
-# h <- grep("*\\Deating", z_var_zones, value = TRUE)
+# h <- grep("*\\Deating", zero_var_zones, value = TRUE)
 
 # extracts zone name logic
 # c <- str_extract(c,"(?<=SYSTEM\\s).*(?=\\:)")
@@ -175,12 +243,12 @@ c <- z_var_zones
 
 # remove the unc zones from
 # `zero_var_zone_names` string list
-z_var_zone_names <- z_var_zones
+zero_var_zone_names <- zero_var_zones
 ```
 
-The longer we work with this data set, the more clear it is that many zones have zero variance. We see that ``r length(z_var_zones)`` out of ``r length(sel_days_df)`` zones have zero variance for this temporal range.
+The longer we work with this data set, the more clear it is that many zones have zero variance. We see that ``r length(zero_var_zones)`` out of ``r length(sel_days_df)`` zones have zero variance for this temporal range.
 
-We find that there are ``r length(c)`` zones with no cooling load and `0` zones with no heating load. We assert that `r length(z_var_zones)` have neither cooling nor heating load. These zones are unconditioned spaces.
+We find that there are ``r length(c)`` zones with no cooling load and `0` zones with no heating load. We assert that `r length(zero_var_zones)` have neither cooling nor heating load. These zones are unconditioned spaces.
 
 Naturally, for a correctly defined building energy model, few if any hours of a certain zone will have both heating and cooling. For possible future regression purposes, I will treat heating load as negative cooling load.
 
@@ -189,7 +257,8 @@ Naturally, for a correctly defined building energy model, few if any hours of a 
 
 ```{r}
 hvac_dhw_var <- df
-save(hvac_dhw_var,file = "hvac_dhw_var.Rda")
+save(hvac_dhw_var, file = "~/MORmod_R/files/hvac_dhw_var.Rda")
+proc.time() - ptm # end timer
 ```
 
 
