@@ -143,12 +143,8 @@ df <- add_months(df)
 #   because I am not smart enough to 
 #   do it in "dplyr" fashion 
 time_date_col_names <- c("month","day","hour","hour_index")
-time_date_data <- df %>% select(time_date_col_names)
-df <- df %>% select(-time_date_col_names)
-
-## save rowname labels
-#rownames(time_col) <- rownames(df)
-#df <- select(df, -c(`Date/Time`))
+time_date_data <- df %>% select(all_of(time_date_col_names))
+df <- df %>% select(-all_of(time_date_col_names))
 
 # REGEX expression
 # any char at least once preceded by "Zone:" AND
@@ -159,25 +155,31 @@ regex_str <- "(?<=Zone\\:).+(?=\\s)|(?<=\\s\\-\\s).*(?=\\sELECTRICITY)"
 zone_names <- str_extract(colnames(df), regex_str)
 colnames(df) <- zone_names # zone names become new col names
 
-df <- bind_cols(time_date_data, df)
-
 ```
 
 # Inspect Zones and select only residential zones of interest
 
 Dwelling units, stairwells, and corridors above the first floor are all considered residential zones.
 
-### Drop Date/Time and save for later
-
-
 ```{r}
-
 # can I do this in "tidy" fashion
-df %>%
+df <- df %>%
   select(contains("STAIRWELL") | contains("CORRIDOR") | contains("BDRM")) %>%
   select(sort(current_vars()))
 
+# add time/date columns back in
+df <- bind_cols(time_date_data, df)
+
+# auto checker
+#   bool check that time/date cols are present
+time_date_present <- length(time_date_col_names) == df %>% select(all_of(time_date_col_names)) %>% ncol(.)
+
+#   bool check that no extra cols are present
+no_extra_col <- 0 == df %>% select(-c(all_of(time_date_col_names), contains("STAIRWELL") | contains("CORRIDOR") | contains("BDRM"))) %>% ncol(.)
+
 ```
+
+The auto checker revealed that it is ``r time_date_present`` that time and date columns are present in the dataframe after this step. The auto checker revealed that it is ``r no_extra_col`` that no extra columns are present.
 
 ### Rowname labels
 
