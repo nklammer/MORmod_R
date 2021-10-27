@@ -15,6 +15,7 @@ library(tidyverse)
 ```{r include=FALSE}
 rm(list = ls())
 gc()
+ptm <- proc.time() # timer start
 ```
 
 # Intro
@@ -27,7 +28,7 @@ The R package `eplusr` contains useful functions and an `Epw` object for easily 
 
 ```{r include=FALSE}
 library(eplusr)
-epw <- eplusr::Epw$new("USA_CA_Los.Angeles.Intl.AP.722950_TMY3.epw")
+epw <- eplusr::Epw$new("~/MORmod_R/files/USA_CA_Los.Angeles.Intl.AP.722950_TMY3.epw")
 
 # good info
 epw$typical_extreme_period()
@@ -42,17 +43,18 @@ epw$data() %>%
 The responsible model for this data resides in the project folder `MORmod_mf/osw_mf_thesis/*/run`.
 
 ```{r import, message=FALSE, warning=FALSE}
-load(file = "ilas_nodhw.Rda")     # ilas_nodhw
-load(file = "ilas_dhw_novar.Rda") # ilas_dhw_novar
-load(file = "hvac_dhw_novar.Rda") # hvac_dhw_novar
-load(file = "hvac_dhw_var.Rda")   # hvac_dhw_var
+load(file = "~/MORmod_R/files/ilas_nodhw.Rda")     # ilas_nodhw
+load(file = "~/MORmod_R/files/ilas_dhw_novar.Rda") # ilas_dhw_novar
+load(file = "~/MORmod_R/files/hvac_dhw_novar.Rda") # hvac_dhw_novar
+load(file = "~/MORmod_R/files/hvac_dhw_var.Rda")   # hvac_dhw_var
 
 ```
 
 ### Check that column names match
 
 ```{r}
-uniq <- unique(
+## get total union set of column names
+col_names_union <- unique(
 c(
   colnames(ilas_nodhw),
   colnames(ilas_dhw_novar),
@@ -60,12 +62,23 @@ c(
   colnames(hvac_dhw_var)
 ))
 
-all(uniq %in% colnames(ilas_nodhw))
-all(uniq %in% colnames(ilas_dhw_novar))
-all(uniq %in% colnames(hvac_dhw_novar))
-all(uniq %in% colnames(hvac_dhw_var))
+# every column name in the union set exists in each dataframe?
+missing_list <- unique(c(
+col_names_union[!(col_names_union %in% colnames(ilas_nodhw))],
+col_names_union[!(col_names_union %in% colnames(ilas_dhw_novar))],
+col_names_union[!(col_names_union %in% colnames(hvac_dhw_novar))],
+col_names_union[!(col_names_union %in% colnames(hvac_dhw_var))]
+))
 
+
+
+message <- if(length(missing_list)<1) "There is no mismatch" else {
+  paste("There is a mismatch.",
+        paste(missing_list, collapse = ", "),
+        "is present in some but not all of the dataframes")}
 ```
+
+Placeholder: `r message`.
 
 # Visualizations
 
@@ -76,7 +89,7 @@ Under this section I have code that opens the `grDevices` connection and writes 
 
 ```{r Type Function, include=FALSE}
 # Define function for categorizing zones by "Apartment", "Stairs", and "Corridor".
-type_f <- function (zone_string) {
+returns_zone_type <- function (zone_string) {
   if (grepl("BDRM",zone_string)) {
     return("Apartment")
   }
@@ -98,15 +111,17 @@ db_temp <- epw$data()$dry_bulb_temperature # degC
 df <- cbind(db_temp,ilas_nodhw)
 ```
 
-```{r message=FALSE}
+```{r message=FALSE, warning=FALSE}
+## data from Studio Bedroom 1, Third Floor
 df_gg <- cbind(db_temp, ilas_nodhw)
-ggplot(df_gg, aes(x=db_temp,y=`0_BDRM_1_3`)) + geom_jitter(width = 0.6, height = 0, alpha = 1/20) + geom_smooth(se=F) + theme_classic(base_size = 16) + scale_y_continuous("Ideal Air Loads Cooling (J)") +  scale_x_continuous("Drybulb Temperature (°C)") + ggtitle("Studio Bedroom 1, Third Floor")
+ggplot(df_gg, aes(x=db_temp,y=`0_BDRM_1_3`)) + geom_jitter(width = 0.6, height = 0, alpha = 1/20) + geom_smooth(se=F) + theme_classic(base_size = 16) + scale_y_continuous("Ideal Air Loads Cooling (J)") + scale_x_continuous("Drybulb Temperature (°C)", expand = c(0,0), limits = c(4,27)) + ggtitle("Cooling load calculation only,\none apartment unit") + annotate("text", x = 5, y = 2.6*10^6, label = paste("n =",nrow(df_gg)), size = 5) + coord_cartesian(xlim = c(0,30))
 ```
 
 
-```{r message=FALSE}
+```{r message=FALSE, warning=FALSE}
+## Data from studio bedroom 1, third floor
 df_gg <- cbind(db_temp, hvac_dhw_var)
-ggplot(df_gg, aes(x=db_temp, y=`0_BDRM_1_3`)) + geom_jitter(width = 0.6, height = 0, alpha = 1/20) + geom_smooth(se=F) + theme_classic(base_size = 16) + scale_y_continuous("Energy Use (J)",labels = scales::scientific_format()) + scale_x_continuous("Drybulb Temperature (°C)") + ggtitle("Studio Bedroom 1, Third Floor")
+ggplot(df_gg, aes(x=db_temp, y=`0_BDRM_1_3`)) + geom_jitter(width = 0.6, height = 0, alpha = 1/20) + geom_smooth(se=F) + theme_classic(base_size = 16) + scale_y_continuous("Energy Use (J)",labels = scales::scientific_format()) + scale_x_continuous("Drybulb Temperature (°C)", expand = c(0,0), limits = c(5,28)) + ggtitle("All energy end uses,\none apartment unit") + annotate("text", x = 5, y = 1.0*10^7, label = paste("n =",nrow(df_gg)), size = 5) + coord_cartesian(xlim = c(0,30))
 ```
 
 ### ggplot facet_wrap
@@ -135,7 +150,7 @@ type <- vector(mode = "character")
 for (col in 1:ncol(x)) { 
   values <- append(values, x[,col])
   zones <- append(zones, rep(colnames(x)[col], times = 8760))
-  type <- append(type, rep(type_f(colnames(x)[col]), times = 8760))
+  type <- append(type, rep(returns_zone_type(colnames(x)[col]), times = 8760))
 }
 
 df <- data.frame(db_temp = as.double(db_list), values = as.integer(values), zones = as.factor(zones), type = as.factor(type))
@@ -182,7 +197,7 @@ type <- vector(mode = "character")
 for (col in 1:ncol(x)) { 
   values <- append(values, x[,col])
   zones <- append(zones, rep(colnames(x)[col], times = 8760))
-  type <- append(type, rep(type_f(colnames(x)[col]), times = 8760))
+  type <- append(type, rep(returns_zone_type(colnames(x)[col]), times = 8760))
 }
 
 df <- data.frame(db_temp = as.double(db_list), values = as.integer(values), zones = as.factor(zones), type = as.factor(type))
@@ -245,7 +260,7 @@ type <- vector(mode = "character")
 for (col in 1:ncol(x)) { 
   values <- append(values, x[,col])
   zones <- append(zones, rep(colnames(x)[col], times = 8760))
-  type <- append(type, rep(type_f(colnames(x)[col]), times = 8760))
+  type <- append(type, rep(returns_zone_type(colnames(x)[col]), times = 8760))
 }
 
 df <- data.frame(db_temp = as.double(db_list), values = as.integer(values), zones = as.factor(zones), type = as.factor(type))
@@ -293,7 +308,7 @@ type <- vector(mode = "character")
 for (col in 1:ncol(x)) { 
   values <- append(values, x[,col])
   zones <- append(zones, rep(colnames(x)[col], times = 8760))
-  type <- append(type, rep(type_f(colnames(x)[col]), times = 8760))
+  type <- append(type, rep(returns_zone_type(colnames(x)[col]), times = 8760))
 }
 
 df <- data.frame(db_temp = as.double(db_list), values = as.integer(values), zones = as.factor(zones), type = as.factor(type))
@@ -333,7 +348,7 @@ p + facet_grid(rows = vars(month), labeller = labeller(month = month.labs)) + sc
 dev.off()
 ```
 
-Dry bulb temperature versus hour for four select days in the typical Los Angeles meteorological year: ![](images/4days.png)
+Dry bulb temperature versus hour for four select days in the typical Los Angeles meteorological year: ![](../images/4days.png)
 
 ### Faceted climate ggplot for 365 days
 
@@ -375,9 +390,14 @@ p <- ggplot(x, aes(x = hour, y = dry_bulb_temperature, color = factor(month))) +
 p + facet_wrap(~d_ind) + scale_color_manual(name = "Month", labels = month.abb, values = colorv) + scale_x_discrete(labels = NULL) + scale_y_discrete(labels = NULL) + theme(strip.background = element_blank(), strip.text.x = element_blank(), axis.title.y = element_text(margin = margin(r=12))) + labs(x = NULL, y = "Drybulb temperature")
 
 dev.off()
+
 ```
 
-Dry bulb temperature versus time of the full 365 days of the typical meteorological year for Los Angeles: ![](images/365.png)
+Dry bulb temperature versus time of the full 365 days of the typical meteorological year for Los Angeles: ![](../images/365.png)
+
+```{r}
+proc.time() - ptm # timer stop
+```
 
 
 <br><br><br>
