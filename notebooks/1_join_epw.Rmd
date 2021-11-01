@@ -395,6 +395,14 @@ dev.off()
 
 Dry bulb temperature versus time of the full 365 days of the typical meteorological year for Los Angeles: ![](../images/365.png)
 
+### export R data of typical weeks for future sampling of EULP
+
+```{r}
+typical_extreme_weeks <- epw$typical_extreme_period()
+save(typical_extreme_weeks, file = "~/MORmod_R/files/typical_extreme_weeks.Rda")
+```
+
+
 ```{r}
 proc.time() - ptm # timer stop
 ```
