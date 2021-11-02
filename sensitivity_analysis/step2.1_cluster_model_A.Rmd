@@ -26,10 +26,10 @@ In this case I'm using `ilas_nodhw` dataframe to cluster but I'm reducing the  `
 The column order is consistent between dataframes.
 
 ```{r import, message=FALSE, warning=FALSE}
-load(file = "ilas_nodhw.Rda")
-load(file = "ilas_dhw_novar.Rda")
-load(file = "hvac_dhw_novar.Rda")
-load(file = "hvac_dhw_var.Rda")
+load(file = "~/MORmod_R/files/ilas_nodhw.Rda")
+load(file = "~/MORmod_R/files/ilas_dhw_novar.Rda")
+load(file = "~/MORmod_R/files/hvac_dhw_novar.Rda")
+load(file = "~/MORmod_R/files/hvac_dhw_var.Rda")
 
 ```
 
@@ -60,11 +60,11 @@ time_cols_receiver <- select(df_receiver, c(hour,day,month))
 rownames(time_cols_cluster) <- rownames(df_cluster) # need to keep row labels
 rownames(time_cols_receiver) <- rownames(df_receiver) # need to keep row labels
 
-df_cluster <- select(df_cluster, -c(hour,day,month))
-df_receiver <- select(df_receiver, -c(hour,day,month)) 
+df_cluster <- select(df_cluster, -c(hour,day,month,hour_index))
+df_receiver <- select(df_receiver, -c(hour,day,month,hour_index)) 
 
 ### Load Area Map
-area_map <- read_csv("../ZoneFloorArea-Map.csv")
+area_map <- read_csv("~/MORmod_R/files/ZoneFloorArea-Map.csv")
 
 idx_f <- function(string) { # takes zone string and maps to zone index in area_map
   which(string==area_map$`Zone List`) # returns num vec
@@ -115,7 +115,7 @@ tdf <- as.data.frame(t(df_cluster))
 
 APR <- apcluster(negDistMat(r=2), tdf, details = TRUE) # returns a APResult
 
-area_map <- read_csv("../ZoneFloorArea-Map.csv")
+area_map <- read_csv("~/MORmod_R/files/ZoneFloorArea-Map.csv")
 
 idx_f <- function(string) { # takes zone string and maps to zone index in area_map
   which(string==area_map$`Zone List`) # returns num vec
