@@ -24,10 +24,10 @@ This is my thrid attempt at clustering of zones using the ideal air loads output
 ## Import Rda data
 
 ```{r import, message=FALSE, warning=FALSE}
-load(file = "ilas_nodhw.Rda")
-load(file = "ilas_dhw_novar.Rda")
-load(file = "hvac_dhw_novar.Rda")
-load(file = "hvac_dhw_var.Rda")
+load(file = "~/MORmod_R/files/ilas_nodhw.Rda")
+load(file = "~/MORmod_R/files/ilas_dhw_novar.Rda")
+load(file = "~/MORmod_R/files/hvac_dhw_novar.Rda")
+load(file = "~/MORmod_R/files/hvac_dhw_var.Rda")
 
 ```
 
@@ -51,18 +51,18 @@ Load in an external data set of rows with two attributes: zone name and floor ar
 ```{r warning=FALSE}
 
 ### Drop Date/Time and save for later
-time_cols <- select(df, c(hour,day,month))
+time_cols <- select(df, c(hour, day, month, hour_index))
 rownames(time_cols) <- rownames(df) # need to keep row labels
-df <- select(df, -c(hour,day,month)) 
+df <- select(df, -c(hour, day, month, hour_index)) 
 
 ### Load Area Map
-area_map <- read_csv("ZoneFloorArea-Map.csv")
+area_map <- read_csv("~/MORmod_R/files/ZoneFloorArea-Map.csv")
 
-idx_f <- function(string) { # takes zone string and maps to zone index in area_map
+maps_name_to_index <- function(string) { # takes zone string and maps to zone index in area_map
   which(string==area_map$`Zone List`) # returns num vec
   }
 
-area_idx <- sapply(colnames(df),idx_f) # maps df idx to area idx
+area_idx <- sapply(colnames(df),maps_name_to_index) # maps df idx to area idx
 area_vec <- area_map$`Space Area [m2]`[area_idx]
 
 # apply normalization vector across columns
@@ -73,7 +73,7 @@ df <- sweep(df, 2, area_vec, FUN = "/")
 rownames(df) <- str_replace(rownames(df),"(?<=\\[)J{1}","J/m^2")
 
 ### Add Date/Time back in
-df <- cbind(time_cols,df)
+df <- bind_cols(time_cols,df)
 ```
 
 
@@ -95,18 +95,18 @@ library(apcluster)
 # drop time date cols in
 # preparation for clustering
 if ("minute" %in% colnames(df)) {
-  df <- subset(df, select = -c(day, hour, month, minute))
+  df <- df %>% select(-c(day, hour, month, minute, hour_index))
 } else {
-  df <- subset(df, select = -c(day, hour, month))
+  df <- df %>% select(-c(day, hour, month, hour_index))
 }
 
 tdf <- as.data.frame(t(df))
 
 APR <- apcluster(negDistMat(r=2), tdf, details = TRUE) # returns a APResult
 
-area_map <- read_csv("ZoneFloorArea-Map.csv")
+area_map <- read_csv("~/MORmod_R/files/ZoneFloorArea-Map.csv")
 
-idx_f <- function(string) { # takes zone string and maps to zone index in area_map
+maps_name_to_index <- function(string) { # takes zone string and maps to zone index in area_map
   which(string==area_map$`Zone List`) # returns num vec
   }
 
@@ -117,7 +117,7 @@ for (i in 1:length(APR@clusters)) { # iterate through each cluster
   # get list of members of cluster i # char vec
   member_zone_names <- names(unlist(APR@clusters[i])) # inclusive of exemplar
   # map strings to m2 values # num vec
-  area_idx <- sapply(member_zone_names, idx_f) # maps cluster idx to area idx
+  area_idx <- sapply(member_zone_names, maps_name_to_index) # maps cluster idx to area idx
   # get floor area num values
   member_area_num <- area_map$`Space Area [m2]`[area_idx] # num vec
   # create scalar and append to num vec in order of clusters i
@@ -139,11 +139,11 @@ red_df <- sweep(red_df, 2, scalars, FUN = "*")
 rownames(red_df) <- str_replace(rownames(red_df),"J/m\\^2","J")
 
 ### Add Date/Time back in
-red_df <- cbind(time_cols,red_df)
+red_df <- bind_cols(time_cols,red_df)
 
 ### Save out
 ilas_dhw_novar_red <- red_df
-save(ilas_dhw_novar_red, file = "ilas_dhw_novar_red.Rda")
+save(ilas_dhw_novar_red, file = "~/MORmod_R/files/ilas_dhw_novar_red.Rda")
 ```
 
 # End
