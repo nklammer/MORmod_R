@@ -37,8 +37,9 @@ load(file = "~/MORmod_R/files/hvac_dhw_var.Rda")
 
 ```{r}
 # CHANGE DATA HERE
-df_cluster <- hvac_dhw_novar
-df_receiver <- hvac_dhw_var
+# the two frames below should have the same dimension
+df_cluster <- select(hvac_dhw_novar, -c(CORRIDOR_1, CORRIDOR_2, CORRIDOR_3, CORRIDOR_4))
+df_receiver <- select(hvac_dhw_var, -c(CORRIDOR_1, CORRIDOR_2, CORRIDOR_3, CORRIDOR_4))
 ```
 
 # Feature normalization
@@ -84,7 +85,7 @@ rownames(df_receiver) <- str_replace(rownames(df_receiver),"(?<=\\[)J{1}","J/m^2
 
 ### Add Date/Time back in
 df_cluster <- cbind(time_cols_cluster,df_cluster)
-df_receiver <- cbind(time_cols_receiver,df_cluster)
+df_receiver <- cbind(time_cols_receiver,df_receiver)
 ```
 
 
@@ -106,9 +107,11 @@ library(apcluster)
 # drop time date cols in
 # preparation for clustering
 if ("minute" %in% colnames(df_cluster)) {
-  df_cluster <- subset(df_cluster, select = -c(day, hour, month, minute, hour_index))
+  df_cluster <- df_cluster %>% select(-c(day, hour, month, minute, hour_index))
+  df_receiver <- df_receiver %>% select(-c(day, hour, month, minute, hour_index))
 } else {
-  df_cluster <- subset(df_cluster, select = -c(day, hour, month, hour_index))
+  df_cluster <- df_cluster %>% select(-c(day, hour, month, hour_index))
+  df_receiver <- df_receiver %>% select(-c(day, hour, month, hour_index))
 }
 
 tdf <- as.data.frame(t(df_cluster))
