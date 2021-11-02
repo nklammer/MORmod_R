@@ -24,7 +24,7 @@ This is my thrid attempt at clustering of zones using the ideal air loads output
 ## Import Rda of Zone Ideal Loads Air System
 
 ```{r import, message=FALSE, warning=FALSE}
-load(file = "ILAS.Rda")
+load(file = "~/MORmod_R/files/ILAS.Rda")
 ```
 
 ### Select N hours to cluster in N-space
@@ -126,6 +126,7 @@ clearly indicates *X* clusters.
 ### apcluster::aggExCluster
 
 #### Details
+
 aggExCluster performs agglomerative clustering. Unlike other methods, e.g., the ones implemented in hclust, aggExCluster is computing exemplars for each cluster and its merging objective is geared towards the identification of meaningful exemplars, too.
 
 
