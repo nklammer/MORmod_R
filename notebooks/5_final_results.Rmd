@@ -1,7 +1,7 @@
 ---
 title: "Final Results"
 author: "Noah Klammer"
-date: "6/28/2021"
+date: "11/02/2021"
 output: html_document
 ---
 
@@ -23,8 +23,8 @@ gc()
 ## Import Rda data
 
 ```{r import, message=FALSE, warning=FALSE}
-load(file = "hvac_dhw_var.Rda")
-load(file = "hvac_dhw_var_red.Rda")
+load(file = "~/MORmod_R/files/hvac_dhw_var.Rda")
+load(file = "~/MORmod_R/files/hvac_dhw_var_red.Rda")
 
 ```
 
@@ -43,32 +43,54 @@ df_red <- hvac_dhw_var_red
 ```{r}
 # maybe summarize verb across rows?
 
+# check out labels
+time_date_labs <- df %>% select(c(month, day, hour, hour_index))
+rowname_labs <- rownames(df)
+
+# replaces any NA types with '0' int
 df <- df %>%
-  replace(is.na(.), 0) %>%
-  mutate(rowsum = rowSums(.)) %>%
-  select(rowsum)
+  replace(is.na(.), 0) 
 
+# creates new column that is sum of rows
+#   excluding the time/date labels
+df <- df %>%
+  select(-c(month, day, hour, hour_index)) %>%
+  mutate(rowsum = rowSums(.)) %>%
+  bind_cols(time_date_labs) %>% # check back in labels
+  relocate(c(month, day, hour, hour_index))
+
+# checks back in the rownames
+rownames(df) <- rowname_labs
+
+
+# replaces any NA types with '0' int
 df_red <- df_red %>%
-  replace(is.na(.), 0) %>%
-  mutate(rowsum = rowSums(.)) %>%
-  select(rowsum)
+  replace(is.na(.), 0) 
 
-hour_index <- seq(8760)
-red_rowsum <- df_red$rowsum
-df_com <- cbind(hour_index,df,red_rowsum) # comparison df
+# creates new column that is sum of rows
+#   excluding the time/date labels
+df_red <- df_red %>%
+  select(-c(month, day, hour, hour_index)) %>%
+  mutate(rowsum = rowSums(.)) %>%
+  bind_cols(time_date_labs) %>% # check back in labels
+  relocate(c(month, day, hour, hour_index))
+
+# checks back in the rownames
+rownames(df_red) <- rowname_labs
 
 ```
 
 
-### Definitions of CV-RMSE and NMBE
+### Definitions of CV-RMSE and returns_nmbe
 
-I am coding working backwards from results. For equations of CV-RMSE and NMBE see, Results chapter.
+I am coding working backwards from results. For equations of CV-RMSE and returns_nmbe see, Results chapter.
 
 ```{r}
-cvrmse <- function(y_i, y_hat_i) {
+returns_cvrmse <- function(y_i, y_hat_i) {
   sqrt(sum(((y_i - y_hat_i)^2))/(length(y_i)-1))/mean(y_i)
 }
-nmbe <- function(y_i, y_hat_i) {
+
+returns_nmbe <- function(y_i, y_hat_i) {
   sum(y_i-y_hat_i)/((length(y_i)-1)*mean(y_i))
 }
 ```
@@ -76,22 +98,23 @@ nmbe <- function(y_i, y_hat_i) {
 # Do stat calcs
 
 ```{r}
-cvrmse(df_com$rowsum, df_com$red_rowsum)
-nmbe(df_com$rowsum, df_com$red_rowsum)
-sum(df_com$rowsum)/sum(df_com$red_rowsum)
+returns_cvrmse(df$rowsum, df_red$rowsum)
+returns_nmbe(df$rowsum, df_red$rowsum)
+sum(df$rowsum)/sum(df_red$rowsum)
 ```
 
 ## Plot the residuals
 
 ```{r}
-plot(df_com$rowsum, df_com$red_rowsum, pch = 20, ylab="Energy use, reduced model (J)", xlab="Energy use, full model (J)", main="Reduced Model versus Full Model")
+plot(df$rowsum, df_red$rowsum, col = rgb(red = 0, green = 0, blue = 0, alpha = 0.2), pch = 20, ylab="Energy use, reduced model (J)", xlab="Energy use, full model (J)", main="Reduced Model versus Full Model")
 abline(0,1, col = "red")
+text(x = 2.8*10^8, y = 1.2*10^8, paste("n =",nrow(df)), cex = 1.5)
 
 ```
 
 
 ```{r}
-residuals = df_com$rowsum - df_com$red_rowsum
+residuals = df$rowsum - df_red$rowsum
 
 hour_index <- seq(8760)
 #plot(hour_index, residuals, ylab="Residuals", xlab="Year hours", main="Reduced Model versus Full Model") 
@@ -112,18 +135,18 @@ day_idx <- rep(1:365, each = 24)
 
 cbind(day_idx,df) %>%
   group_by(day_idx) %>%
-  summarize(across(-c(day,hour,month),sum))
+  summarize(across(-c(day,hour,month), sum))
 
 # downsample to week
 week_idx <- rep(1:52, each = 7*24, length.out = 8760)
 cbind(week_idx,df) %>%
   group_by(week_idx) %>%
-  summarize(across(-c(day,hour,month),sum))
+  summarize(across(-c(day,hour,month), sum))
 
 # downsample to month
 df %>%
   group_by(month) %>%
-  summarize(across(-c(day,hour),sum))
+  summarize(across(-c(day,hour), sum))
 
   
 ```
