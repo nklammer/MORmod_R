@@ -24,7 +24,7 @@ In this case C, I am comparing a reduced model with clustering basis in `hvac_dh
 ## Import Rda data
 
 ```{r import, message=FALSE, warning=FALSE}
-load(file = "hvac_dhw_var.Rda")
+load(file = "~/MORmod_R/files/hvac_dhw_var.Rda")
 load(file = "compare_C.Rda")
 
 ```
