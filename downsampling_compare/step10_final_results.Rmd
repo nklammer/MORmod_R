@@ -23,8 +23,8 @@ gc()
 ## Import Rda data
 
 ```{r import, message=FALSE, warning=FALSE}
-load(file = "hvac_dhw_var_month.Rda")
-load(file = "hvac_dhw_var_month_red.Rda")
+load(file = "hvac_dhw_var_week.Rda")
+load(file = "hvac_dhw_var_week_red.Rda")
 
 ```
 
@@ -32,8 +32,8 @@ load(file = "hvac_dhw_var_month_red.Rda")
 
 ```{r}
 # CHANGE DATA HERE
-df <- hvac_dhw_var_month
-df_red <- hvac_dhw_var_month_red
+df <- hvac_dhw_var_week
+df_red <- hvac_dhw_var_week_red
 ```
 
 # Body
@@ -55,7 +55,7 @@ df_red <- df_red %>%
 
 month_index <- seq(12)
 red_rowsum <- df_red$rowsum
-df_com <- cbind(month_index,df,red_rowsum) # comparison df
+df_com <- cbind(df,red_rowsum) # comparison df
 
 ```
 

@@ -69,7 +69,7 @@ if (downsample == TRUE) {
   # downsample to month
   df <- df %>%
     group_by(month) %>%
-    summarize(across(-c(day, hour, hour_index),sum)) %>%
+    summarize(across(-c(day, hour, hour_index), sum)) %>%
     select(-c(month))
   hvac_dhw_var_month <- df
   save(hvac_dhw_var_month, file = "hvac_dhw_var_month.Rda")
