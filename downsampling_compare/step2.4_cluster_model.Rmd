@@ -24,7 +24,7 @@ This is my thrid attempt at clustering of zones using the ideal air loads output
 ## Import Rda data
 
 ```{r import, message=FALSE, warning=FALSE}
-load(file = "hvac_dhw_var.Rda")
+load(file = "~/MORmod_R/files/hvac_dhw_var.Rda")
 ```
 
 ### Set data
@@ -40,7 +40,7 @@ Here we can choose to downsample our temporal data from hour to `day`, `week`, o
 
 ```{r}
 downsample <- TRUE
-sample_interval <- "week" # choices: "day", "week", "month"
+sample_interval <- "month" # choices: "day", "week", "month"
 
 if (downsample == TRUE) {
   if (sample_interval == "day") {
@@ -49,7 +49,7 @@ if (downsample == TRUE) {
     rownames(day_idx) <- rownames(df)
     df <- cbind(day_idx,df) %>%
       group_by(day_idx) %>%
-      summarize(across(-c(day,hour,month),sum)) %>%
+      summarize(across(-c(day, hour, month, hour_index),sum)) %>%
       select(-c(day_idx))
     hvac_dhw_var_day <- df
     save(hvac_dhw_var_day, file = "hvac_dhw_var_day.Rda")
@@ -60,7 +60,7 @@ if (downsample == TRUE) {
   rownames(week_idx) <- rownames(df)
   df <- cbind(week_idx,df) %>%
     group_by(week_idx) %>%
-    summarize(across(-c(day,hour,month),sum)) %>%
+    summarize(across(-c(day, hour, month, hour_index), sum)) %>%
     select(-c(week_idx))
   hvac_dhw_var_week <- df
   save(hvac_dhw_var_week, file = "hvac_dhw_var_week.Rda")
@@ -69,7 +69,7 @@ if (downsample == TRUE) {
   # downsample to month
   df <- df %>%
     group_by(month) %>%
-    summarize(across(-c(day,hour),sum)) %>%
+    summarize(across(-c(day, hour, hour_index),sum)) %>%
     select(-c(month))
   hvac_dhw_var_month <- df
   save(hvac_dhw_var_month, file = "hvac_dhw_var_month.Rda")
@@ -92,9 +92,9 @@ Load in an external data set of rows with two attributes: zone name and floor ar
 
 ### Drop Date/Time and save for later
 if ("hour" %in% colnames(df)) {
-  time_cols <- select(df, c(hour,day,month))
+  time_cols <- select(df, c(month, day, hour, hour_index))
   rownames(time_cols) <- rownames(df) # need to keep row labels
-  df <- select(df, -c(hour,day,month)) 
+  df <- select(df, -c(month, day, hour, hour_index)) 
 } else if ("day" %in% colnames(df)) {
   time_cols <- select(df, c(day,month))
   rownames(time_cols) <- rownames(df) # need to keep row labels
@@ -106,13 +106,13 @@ if ("hour" %in% colnames(df)) {
 } else {}
 
 ### Load Area Map
-area_map <- read_csv("../ZoneFloorArea-Map.csv")
+area_map <- read_csv("~/MORmod_R/files/ZoneFloorArea-Map.csv")
 
-idx_f <- function(string) { # takes zone string and maps to zone index in area_map
+maps_name_to_zone <- function(string) { # takes zone string and maps to zone index in area_map
   which(string==area_map$`Zone List`) # returns num vec
   }
 
-area_idx <- sapply(colnames(df),idx_f) # maps df idx to area idx
+area_idx <- sapply(colnames(df), maps_name_to_zone) # maps df idx to area idx
 area_vec <- area_map$`Space Area [m2]`[area_idx]
 
 # apply normalization vector across columns
@@ -157,9 +157,9 @@ APR <- apcluster(negDistMat(r=2), tdf, details = TRUE) # returns a APResult
 
 print(paste("The number of clusters is", length(APR@clusters)))
 
-area_map <- read_csv("../ZoneFloorArea-Map.csv")
+area_map <- read_csv("~/MORmod_R/files/ZoneFloorArea-Map.csv")
 
-idx_f <- function(string) { # takes zone string and maps to zone index in area_map
+maps_name_to_zone <- function(string) { # takes zone string and maps to zone index in area_map
   which(string==area_map$`Zone List`) # returns num vec
   }
 
@@ -170,7 +170,7 @@ for (i in 1:length(APR@clusters)) { # iterate through each cluster
   # get list of members of cluster i # char vec
   member_zone_names <- names(unlist(APR@clusters[i])) # inclusive of exemplar
   # map strings to m2 values # num vec
-  area_idx <- sapply(member_zone_names, idx_f) # maps cluster idx to area idx
+  area_idx <- sapply(member_zone_names, maps_name_to_zone) # maps cluster idx to area idx
   # get floor area num values
   member_area_num <- area_map$`Space Area [m2]`[area_idx] # num vec
   # create scalar and append to num vec in order of clusters i
