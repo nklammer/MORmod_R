@@ -1,7 +1,7 @@
 ---
 title: "Algorithm comparison"
 author: "Noah Klammer"
-date: "7/5/2021"
+date: "11/10/2021"
 output: html_document
 ---
 
@@ -19,13 +19,12 @@ gc()
 
 # Intro
 
-This is my thrid attempt at clustering of zones using the ideal air loads output variable. First I tried 3-space, then I tried 364-space clustering. Confident in the speed of computation, I'm going to try all hours in the simulation year, 8760-space clustering.
+Intro goes here.
 
 ## Import Rda data
 
 ```{r import, message=FALSE, warning=FALSE}
-load(file = "hvac_dhw_var.Rda")
-
+load(file = "~/MORmod_R/files/hvac_dhw_var.Rda")
 ```
 
 ### Set data
@@ -48,18 +47,18 @@ Load in an external data set of rows with two attributes: zone name and floor ar
 ```{r message=FALSE, warning=FALSE}
 
 ### Drop Date/Time and save for later
-time_cols <- select(df, c(hour,day,month))
+time_cols <- select(df, c(hour, day, month, hour_index))
 rownames(time_cols) <- rownames(df) # need to keep row labels
-df <- select(df, -c(hour,day,month)) 
+df <- select(df, -c(hour, day, month, hour_index)) 
 
 ### Load Area Map
-area_map <- read_csv("../ZoneFloorArea-Map.csv")
+area_map <- read_csv("~/MORmod_R/files/ZoneFloorArea-Map.csv")
 
-idx_f <- function(string) { # takes zone string and maps to zone index in area_map
+maps_zone_to_area <- function(string) { # takes zone string and maps to zone index in area_map
   which(string==area_map$`Zone List`) # returns num vec
   }
 
-area_idx <- sapply(colnames(df),idx_f) # maps df idx to area idx
+area_idx <- sapply(colnames(df), maps_zone_to_area) # maps df idx to area idx
 area_vec <- area_map$`Space Area [m2]`[area_idx]
 
 # apply normalization vector across columns
@@ -67,10 +66,10 @@ df <- sweep(df, 2, area_vec, FUN = "/")
 
 # change units
 # **[J]** => [J/m^2]
-rownames(df) <- str_replace(rownames(df),"(?<=\\[)J{1}","J/m^2")
+rownames(df) <- str_replace(rownames(df), "(?<=\\[)J{1}", "J/m^2")
 
 ### Add Date/Time back in
-df <- cbind(time_cols,df)
+df <- cbind(time_cols, df)
 ```
 
 
@@ -92,9 +91,9 @@ library(apcluster)
 # drop time date cols in
 # preparation for clustering
 if ("minute" %in% colnames(df)) {
-  df <- subset(df, select = -c(day, hour, month, minute))
+  df <- subset(df, select = -c(day, hour, hour_index, month, minute))
 } else {
-  df <- subset(df, select = -c(day, hour, month))
+  df <- subset(df, select = -c(day, hour, hour_index, month))
 }
 
 tdf <- as.data.frame(t(df))
@@ -103,9 +102,11 @@ APR <- apcluster(negDistMat(r=2), tdf, details = TRUE) # returns a APResult
 
 print(paste0("The number of clusters is ",length(APR@clusters),"."))
 
-area_map <- read_csv("../ZoneFloorArea-Map.csv")
+k_all_4_compare <- length(APR@clusters)
 
-idx_f <- function(string) { # takes zone string and maps to zone index in area_map
+area_map <- read_csv("~/MORmod_R/files/ZoneFloorArea-Map.csv")
+
+maps_zone_to_area <- function(string) { # takes zone string and maps to zone index in area_map
   which(string==area_map$`Zone List`) # returns num vec
   }
 
@@ -131,13 +132,13 @@ Link to [clustering](https://www.statmethods.net/advstats/cluster.html) in R web
 ```{r}
 set.seed(3)
 df <- tdf
-kmR <- kmeans(df, centers = 13, algorithm = "Hartigan-Wong")
+kmR <- kmeans(df, centers = k_all_4_compare, algorithm = "Hartigan-Wong")
 as.integer(kmR$cluster) # these are idential cluster results
 method_k_seed3 <- as.integer(kmR$cluster)
 
 set.seed(4)
 df <- tdf
-kmR <- kmeans(df, centers = 13, algorithm = "Hartigan-Wong")
+kmR <- kmeans(df, centers = k_all_4_compare, algorithm = "Hartigan-Wong")
 as.integer(kmR$cluster) # these are idential cluster results
 method_k_seed4 <- as.integer(kmR$cluster)
 ```
@@ -145,6 +146,11 @@ method_k_seed4 <- as.integer(kmR$cluster)
 ## Ward Hierarchical Clustering
 
 Compare to affinity propagation per Gregor Henze's request.
+
+* Ward clustering
+* Complete linkage clustering
+* Average linkage clustering
+* Single linkage clustering
 
 ```{r}
 d <- dist(df, method = "euclidean") # distance matrix
@@ -155,35 +161,41 @@ clus_single <- hclust(d, method = "single")
 
 # Ward
 plot(clus_ward, cex = 0.8) # display dendogram
-groups <- cutree(clus_ward, k=13)
-rect.hclust(clus_ward, k=13, border="red")
+groups <- cutree(clus_ward, k=k_all_4_compare)
+rect.hclust(clus_ward, k=k_all_4_compare, border="red")
 #print(as.integer(groups))
 method_ward <- as.integer(groups)
 ```
 
+### Complete linkage clustering
+
 ```{r}
-# complete
+# complete clustering
 plot(clus_comp, cex = 0.8) # display dendogram
-groups <- cutree(clus_ward, k=13)
-rect.hclust(clus_ward, k=13, border="red")
+groups <- cutree(clus_ward, k=k_all_4_compare)
+rect.hclust(clus_ward, k=k_all_4_compare, border="red")
 print(as.integer(groups))
 method_complete <- as.integer(groups)
 ```
 
+### Average linkage clustering
+
 ```{r}
 # average
 plot(clus_avg, cex = 0.8) # display dendogram
-groups <- cutree(clus_ward, k=13)
-rect.hclust(clus_ward, k=13, border="red")
+groups <- cutree(clus_ward, k=k_all_4_compare)
+rect.hclust(clus_ward, k=k_all_4_compare, border="red")
 print(as.integer(groups))
 method_avg <- as.integer(groups)
 ```
 
+### Single linkage clustering
+
 ```{r}
 # single
 plot(clus_single, cex = 0.8) # display dendogram
-groups <- cutree(clus_ward, k=13)
-rect.hclust(clus_ward, k=13, border="red")
+groups <- cutree(clus_ward, k=k_all_4_compare)
+rect.hclust(clus_ward, k=k_all_4_compare, border="red")
 #print(as.integer(groups))
 method_single <- as.integer(groups)
 ```
@@ -225,10 +237,10 @@ cutree(hc.average, 2)
 cutree(hc.single, 2)
 ```
 
-For this data, complete and average linkage generally separate the observations into their correct groups. However, single linkage identifies one point as belonging to its own cluster. A more sensible answer is obtained when four clusters are selected, although there are still two singletons.
+For this data, complete and average linkage generally separate the observations into their correct groups. However, single linkage identifies one point as belonging to its own cluster. A more sensible answer is obtained when four clusters are selected, although there are still ~~two~~ one singletons.
 
 ```{r}
-cutree(hc.single , 4) # two singletons
+cutree(hc.single , 4)
 ```
 
 To scale the variables before performing hierarchical clustering of the observations, we use the `scale()` function:
@@ -243,19 +255,19 @@ Make a matrix to compare cluster members across algorithms
 
 ```{r}
 export_df <- cbind(zone_names, method_ap, method_k_seed3, method_k_seed4, method_ward, method_complete, method_avg, method_single)
-write.csv(export_df, file = "algorithm_compare_k13.csv")
+write.csv(export_df, file = "algorithm_compare_k_all_4_compare.csv")
 ```
 
 
-# Ward Hierarchical Clustering with Bootstrapped p values
+# Ward Hierarchical Clustering with Bootstrapped *p*-values
 
-Bootstrapping dendograms with pvclust.
+Bootstrapping dendograms with pvclust. What are *p*-values? "Hierarchical clustering is done for given data and *p*-values are computed for each of the clusters." Function `pvclust()` conducts multiscale bootstrap resampling to calculate *p*-values for each cluster in the result of hierarchical clustering.
 
 ```{r}
 library(pvclust)
 # pvclust clusters columns
 # pvclust is bootstrapped
-fit <- pvclust(t(df)[1:10,1:10], method.hclust="ward",
+fit <- pvclust(t(df)[1:20, 1:20], method.hclust="ward",
    method.dist="euclidean")
 plot(fit) # dendogram with p values
 # add rectangles around groups highly supported by the data
@@ -281,18 +293,18 @@ df <- hvac_dhw_var_week # group_by() verb previously used destroyed rownames
 ```{r warning=FALSE}
 
 ### Drop Date/Time and save for later
-# time_cols <- select(df, c(hour,day,month))
+# time_cols <- select(df, c(hour, hour_index, day, month))
 # rownames(time_cols) <- rownames(df) # need to keep row labels
-# df <- select(df, -c(hour,day,month)) 
+# df <- select(df, -c(hour, hour_index, day, month)) 
 
 ### Load Area Map
-area_map <- read_csv("../ZoneFloorArea-Map.csv")
+area_map <- read_csv("~/MORmod_R/files/ZoneFloorArea-Map.csv")
 
-idx_f <- function(string) { # takes zone string and maps to zone index in area_map
+maps_zone_to_area <- function(string) { # takes zone string and maps to zone index in area_map
   which(string==area_map$`Zone List`) # returns num vec
   }
 
-area_idx <- sapply(colnames(df),idx_f) # maps df idx to area idx
+area_idx <- sapply(colnames(df), maps_zone_to_area) # maps df idx to area idx
 area_vec <- area_map$`Space Area [m2]`[area_idx]
 
 # apply normalization vector across columns
@@ -300,10 +312,10 @@ df <- sweep(df, 2, area_vec, FUN = "/")
 
 # change units
 # **[J]** => [J/m^2]
-rownames(df) <- str_replace(rownames(df),"(?<=\\[)J{1}","J/m^2")
+rownames(df) <- str_replace(rownames(df), "(?<=\\[)J{1}", "J/m^2")
 
 ### Add Date/Time back in
-# df <- cbind(time_cols,df)
+# df <- cbind(time_cols, df)
 ```
 
 ```{r}
@@ -312,19 +324,19 @@ library(cluster)
 png(filename = "6_plot_kmeans.png", width = 900, height = 600)
 # Break the set out into an ndays x nmodes (3-hour blocks of the day) matrix for clustering
 ndays = 8760/24
-idx = seq(from=24,to=8760,by=24)
+idx = seq(from=24, to=8760, by=24)
 by_week = as.data.frame(t(df))
 daynames = 1:ndays
 
 # Let's use 6 clusters as a reasonable starting point
 set.seed(6)
 nclust = 6
-clust1_kmeans = kmeans(by_week,nclust)
+clust1_kmeans = kmeans(by_week, nclust)
 centrs = matrix(nrow = nclust, ncol = 52)
 
 # Plot up the clusters
 # plot matrix graphical parameters
-par(mfrow=c(2,ceiling(nclust/2)), mai = c(0.7, 0.8, 0.5, 0.1)) # b, l, t, r
+par(mfrow=c(2, ceiling(nclust/2)), mai = c(0.7, 0.8, 0.5, 0.1)) # b, l, t, r
 
 for(i in 1:nclust){
 	idx = clust1_kmeans$cluster == i
@@ -332,18 +344,18 @@ for(i in 1:nclust){
 	centrs[i,] = as.integer(clust1_kmeans$centers[i,])  # get line across rows not column
 	n = clust1_kmeans$size[i]
 	plot(clustervals[1,],type="l",xlab="Week",
-	     ylab="Energy Use (J/m^2)",col="gray",ylim=c(1*(10^4),2.3*(10^6)), main=paste("Cluster",i) , cex.axis = 1.8, cex.main = 2.0, cex.lab = 2.0, cex = 1.7)
+	     ylab="Energy Use (J/m^2)",col="gray",ylim=c(1*(10^4),1.0*(10^7)), main=paste("Cluster",i) , cex.axis = 1.8, cex.main = 2.0, cex.lab = 2.0, cex = 1.7)
 	if (n>1) {
 	  for(j in 2:n){
 		  lines(clustervals[j,],typ="l",col="gray")
 	  }
 	}
 	lines(centrs[i,],typ="l",col="black",lty="solid")
-	text(10,2.2*(10^6),paste("n = ",n,sep=""), cex = 2.0)
+	text(10,8.5*(10^6),paste("n = ",n, sep=""), cex = 2.0)
 
 }
-legend(x="topright",legend=c("Members","Center"),
-       col=c("gray","black"),lty=c("solid","solid"),bty="n",bg="white",cex = 2.0)
+legend(x="topright", legend=c("Members", "Center"),
+       col=c("gray", "black"), lty=c("solid", "solid"), bty="n", bg="white", cex = 2.0)
 dev.off()
 
 ```
