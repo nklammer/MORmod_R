@@ -261,18 +261,25 @@ write.csv(export_df, file = "algorithm_compare_k_all_4_compare.csv")
 
 # Ward Hierarchical Clustering with Bootstrapped *p*-values
 
-Bootstrapping dendograms with pvclust. What are *p*-values? "Hierarchical clustering is done for given data and *p*-values are computed for each of the clusters." Function `pvclust()` conducts multiscale bootstrap resampling to calculate *p*-values for each cluster in the result of hierarchical clustering.
+Bootstrapping dendograms with pvclust. What are *p*-values? "Hierarchical clustering is done for given data and *p*-values are computed for each of the clusters." Function `pvclust()` conducts multiscale bootstrap resampling to calculate *p*-values for each cluster in the result of hierarchical clustering. The default number of bootstraps `nboot` is 1000.
+
+The *p*-values between 0 and 1 indicates how strong the cluster is supported by data. AU (Approximately Unbiased) p-value and BP (Bootstrap Probability) value. AU p-value, which is computed by multiscale bootstrap resampling, is a better approximation to unbiased p-value than BP value computed by normal bootstrap resampling.
+
+Clusters with AU larger than 95% are highlighted by red rectangles, which are strongly supported by data.
 
 ```{r}
 library(pvclust)
 # pvclust clusters columns
 # pvclust is bootstrapped
-fit <- pvclust(t(df)[1:20, 1:20], method.hclust="ward",
-   method.dist="euclidean")
+#fit <- pvclust(t(df)[1:20, 1:20], method.hclust="ward", method.dist="euclidean")
+fit <- pvclust(t(df), method.hclust="ward", method.dist="euclidean", nboot = 100)
+
 plot(fit) # dendogram with p values
 # add rectangles around groups highly supported by the data
 pvrect(fit, alpha=.95)
 ```
+
+The results from this bootstraping (similar to Monte Carlo methods) shows that there is great clustering certainty in separating common areas from apartment spaces but there is not great confidence in clustering apartments otherwise.
 
 ## Model Based Clustering
 
